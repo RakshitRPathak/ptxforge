@@ -31,12 +31,12 @@ Lowers `GEMM + bias + GELU` from `linalg` toward NVIDIA PTX, with custom C++ pas
 | C++ ↔ Python reference parity | ✅ **tested**: identical search space and modeled numbers on all 3,610 configs × 4 GPUs × 3 sizes (`make parity`) |
 | External/LLM advisor protocol (C++ side, validation guard) | ✅ **tested** with a fake advisor script; `scripts/llm_propose.py` (the actual API call) |
 | Studio (`studio/index.html`) | ✅ **rendered in headless Chromium** with a C++-produced trace, no console errors |
-| `CudaRunner` (`core/src/cuda_runner.cpp`: nvcc→PTX, `cuModuleLoadData`, correctness gate, event timing, cuBLAS) |
+| `CudaRunner` (`core/src/cuda_runner.cpp`: nvcc→PTX, `cuModuleLoadData`, correctness gate, event timing, cuBLAS) | ⚠️ written; not yet run on a GPU |
 | CUDA kernel (`kernels/gemm_bias_gelu.cu`) | ⚠️ written and reviewed |
 | MLIR passes + `ptxforge-opt` + CMake/TableGen | ⚠️ written for LLVM 19, Expect small API fixes: `docs/MLIR_API_NOTES.md` |
-| FileCheck tests (`compiler/test/*.mlir`) | 
-| `scripts/lower_to_ptx.sh`, `schedule_template.mlir` |
-| Any GFLOP/s number anywhere |
+| FileCheck tests (`compiler/test/*.mlir`) | ⚠️ written; not yet run (needs an LLVM 19 build) |
+| `scripts/lower_to_ptx.sh`, `schedule_template.mlir` | ⚠️ written; not yet run end to end |
+| Any GFLOP/s number anywhere | ❌ none yet: no measured GPU results are reported |
 
 ⚠️ = written but not yet built or run on real hardware. The shipped kernel is FP32 SGEMM; FP16 tensor cores are milestone M3. No GPU performance numbers are reported until they come from measured traces.
 
