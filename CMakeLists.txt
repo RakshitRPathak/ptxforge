@@ -1,0 +1,55 @@
+cmake_minimum_required(VERSION 3.20)
+project(ptxforge LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+option(PTXFORGE_BUILD_TOOLS    "Build ptxforge-tune, bank_sim and the unit tests (no dependencies)" ON)
+option(PTXFORGE_WITH_CUDA      "Real GPU runner inside ptxforge-tune (needs CUDA driver + nvcc)"      OFF)
+option(PTXFORGE_WITH_CUBLAS    "cuBLAS SGEMM upper reference (needs PTXFORGE_WITH_CUDA)"              ON)
+option(PTXFORGE_BUILD_COMPILER "Build MLIR passes + ptxforge-opt (needs MLIR 19)"                     OFF)
+
+enable_testing()
+
+if(PTXFORGE_BUILD_TOOLS)
+  add_executable(bank_sim tools/bank_sim.cpp)
+  target_include_directories(bank_sim PRIVATE compiler/include)
+  target_compile_options(bank_sim PRIVATE -Wall -Wextra)
+  add_test(NAME bank_model COMMAND bank_sim)
+
+  set(PTXFORGE_CORE_SRC core/src/main.cpp)
+  if(PTXFORGE_WITH_CUDA)
+    list(APPEND PTXFORGE_CORE_SRC core/src/cuda_runner.cpp)
+  endif()
+  add_executable(ptxforge-tune ${PTXFORGE_CORE_SRC})
+  target_include_directories(ptxforge-tune PRIVATE core/include compiler/include)
+  target_compile_options(ptxforge-tune PRIVATE -Wall -Wextra)
+  target_compile_definitions(ptxforge-tune PRIVATE PTXFORGE_ROOT_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+  add_executable(ptxforge-tests core/tests/test_core.cpp)
+  target_include_directories(ptxforge-tests PRIVATE core/include compiler/include)
+  target_compile_options(ptxforge-tests PRIVATE -Wall -Wextra)
+  target_compile_definitions(ptxforge-tests PRIVATE PTXFORGE_ROOT_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  add_test(NAME core COMMAND ptxforge-tests)
+
+  find_package(Python3 COMPONENTS Interpreter)
+  if(Python3_FOUND)
+    add_test(NAME parity_vs_python_reference
+             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/parity_check.py $<TARGET_FILE:ptxforge-tune>)
+  endif()
+
+  if(PTXFORGE_WITH_CUDA)
+    find_package(CUDAToolkit REQUIRED)
+    target_compile_definitions(ptxforge-tune PRIVATE PTXFORGE_WITH_CUDA)
+    target_link_libraries(ptxforge-tune PRIVATE CUDA::cuda_driver)
+    if(PTXFORGE_WITH_CUBLAS)
+      target_compile_definitions(ptxforge-tune PRIVATE PTXFORGE_WITH_CUBLAS)
+      target_link_libraries(ptxforge-tune PRIVATE CUDA::cublas)
+    endif()
+  endif()
+endif()
+
+if(PTXFORGE_BUILD_COMPILER)
+  add_subdirectory(compiler)
+endif()

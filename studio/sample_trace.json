@@ -1,0 +1,1198 @@
+{
+ "schema": 1,
+ "source": "simulated",
+ "warning": "SIMULATED: numbers come from the analytic cost model plus noise, not a GPU. Do not quote them as results.",
+ "created": "2026-10-26T03:07:42+00:00",
+ "problem": {
+  "M": 2048,
+  "N": 2048,
+  "K": 2048,
+  "flops": 17179869184
+ },
+ "gpu": {
+  "name": "NVIDIA T4",
+  "arch": "sm_75",
+  "sms": 40,
+  "peak_gflops": 8141,
+  "bw_gbs": 320,
+  "regs_per_sm": 65536,
+  "max_threads_sm": 1024,
+  "max_blocks_sm": 16,
+  "smem_per_sm": 65536,
+  "smem_per_block": 49152,
+  "sustained": 0.62,
+  "ridge": 25.441
+ },
+ "advisor": "kg",
+ "budget": 24,
+ "seed": 0,
+ "space_size": 3610,
+ "baseline_gflops": 2327.06,
+ "best_gflops": 4137.64,
+ "best_index": 4,
+ "speedup_vs_default": 1.778,
+ "cublas_gflops": null,
+ "pct_of_cublas": null,
+ "model_spearman": 0.4284994048,
+ "trials": [
+  {
+   "i": 0,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 8,
+    "TM": 4,
+    "TN": 4,
+    "PAD": 0,
+    "threads": 256,
+    "smem_bytes": 4096
+   },
+   "origin": "baseline",
+   "why": "untuned default",
+   "ok": true,
+   "error": null,
+   "gflops": 2327.06,
+   "ms": 7.3826,
+   "profile": {
+    "regs": 50,
+    "local_bytes": 0,
+    "static_smem": 4096,
+    "blocks_per_sm": 4,
+    "occupancy": 1,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 1,
+    "bank": {
+     "store_As": 8,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 8,
+    "spill_regs": 0,
+    "predicted_gflops": 2048.5001,
+    "waves": 6.4
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 1,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 4,
+    "TM": 8,
+    "TN": 8,
+    "PAD": 8,
+    "threads": 64,
+    "smem_bytes": 2176
+   },
+   "origin": "cost-model",
+   "why": "top predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 3632.73,
+   "ms": 4.7292,
+   "profile": {
+    "regs": 106,
+    "local_bytes": 0,
+    "static_smem": 2176,
+    "blocks_per_sm": 9,
+    "occupancy": 0.5625,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 0.5625,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3862.4918,
+    "waves": 2.8444
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 2,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 8,
+    "TM": 8,
+    "TN": 8,
+    "PAD": 4,
+    "threads": 64,
+    "smem_bytes": 4224
+   },
+   "origin": "cost-model",
+   "why": "top predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 3641.52,
+   "ms": 4.7178,
+   "profile": {
+    "regs": 106,
+    "local_bytes": 0,
+    "static_smem": 4224,
+    "blocks_per_sm": 9,
+    "occupancy": 0.5625,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 0.5625,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3862.4918,
+    "waves": 2.8444
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 3,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 4,
+    "TM": 4,
+    "TN": 16,
+    "PAD": 8,
+    "threads": 64,
+    "smem_bytes": 2176
+   },
+   "origin": "cost-model",
+   "why": "top predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 4131.37,
+   "ms": 4.1584,
+   "profile": {
+    "regs": 110,
+    "local_bytes": 0,
+    "static_smem": 2176,
+    "blocks_per_sm": 9,
+    "occupancy": 0.5625,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 0.5625,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3758.1001,
+    "waves": 2.8444
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 4,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 4,
+    "TM": 16,
+    "TN": 4,
+    "PAD": 8,
+    "threads": 64,
+    "smem_bytes": 2176
+   },
+   "origin": "cost-model",
+   "why": "top predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 4137.64,
+   "ms": 4.1521,
+   "profile": {
+    "regs": 110,
+    "local_bytes": 0,
+    "static_smem": 2176,
+    "blocks_per_sm": 9,
+    "occupancy": 0.5625,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 0.5625,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3758.1001,
+    "waves": 2.8444
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 5,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 8,
+    "TM": 4,
+    "TN": 16,
+    "PAD": 4,
+    "threads": 64,
+    "smem_bytes": 4224
+   },
+   "origin": "cost-model",
+   "why": "top predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 4003.9,
+   "ms": 4.2908,
+   "profile": {
+    "regs": 110,
+    "local_bytes": 0,
+    "static_smem": 4224,
+    "blocks_per_sm": 9,
+    "occupancy": 0.5625,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 0.5625,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3758.1001,
+    "waves": 2.8444
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 6,
+   "cfg": {
+    "BM": 128,
+    "BN": 64,
+    "BK": 4,
+    "TM": 16,
+    "TN": 4,
+    "PAD": 8,
+    "threads": 128,
+    "smem_bytes": 3200
+   },
+   "origin": "advisor:kg",
+   "why": "[r6] memory_bound: increase BM — Global traffic scales as MNK*(1/BM + 1/BN). Larger block tiles raise arithmetic intensity toward the ridge point.",
+   "ok": true,
+   "error": null,
+   "gflops": 3520.3,
+   "ms": 4.8802,
+   "profile": {
+    "regs": 110,
+    "local_bytes": 0,
+    "static_smem": 3200,
+    "blocks_per_sm": 4,
+    "occupancy": 0.5,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict"
+   ],
+   "modeled": {
+    "ai": 20.898,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5047.42,
+    "memory_bound": false,
+    "occupancy": 0.5,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3174.79,
+    "waves": 3.2
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 7,
+   "cfg": {
+    "BM": 64,
+    "BN": 128,
+    "BK": 4,
+    "TM": 16,
+    "TN": 4,
+    "PAD": 8,
+    "threads": 128,
+    "smem_bytes": 3200
+   },
+   "origin": "advisor:kg",
+   "why": "[r7] memory_bound: increase BN — Same as r6 along N.",
+   "ok": true,
+   "error": null,
+   "gflops": 2430.67,
+   "ms": 7.068,
+   "profile": {
+    "regs": 110,
+    "local_bytes": 0,
+    "static_smem": 3200,
+    "blocks_per_sm": 4,
+    "occupancy": 0.5,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict"
+   ],
+   "modeled": {
+    "ai": 20.898,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5047.42,
+    "memory_bound": false,
+    "occupancy": 0.5,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 4
+    },
+    "bank_degree": 4,
+    "spill_regs": 0,
+    "predicted_gflops": 2686.3607,
+    "waves": 3.2
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 8,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 4,
+    "TM": 8,
+    "TN": 4,
+    "PAD": 8,
+    "threads": 128,
+    "smem_bytes": 2176
+   },
+   "origin": "neighbor",
+   "why": "best-predicted neighbor of incumbent",
+   "ok": true,
+   "error": null,
+   "gflops": 3999.33,
+   "ms": 4.2957,
+   "profile": {
+    "regs": 70,
+    "local_bytes": 0,
+    "static_smem": 2176,
+    "blocks_per_sm": 7,
+    "occupancy": 0.875,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 0.875,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3528.517,
+    "waves": 3.6571
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 9,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 8,
+    "TM": 16,
+    "TN": 4,
+    "PAD": 8,
+    "threads": 64,
+    "smem_bytes": 4352
+   },
+   "origin": "neighbor",
+   "why": "best-predicted neighbor of incumbent",
+   "ok": true,
+   "error": null,
+   "gflops": 3891.03,
+   "ms": 4.4152,
+   "profile": {
+    "regs": 110,
+    "local_bytes": 0,
+    "static_smem": 4352,
+    "blocks_per_sm": 9,
+    "occupancy": 0.5625,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 0.5625,
+    "bank": {
+     "store_As": 2,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3444.9251,
+    "waves": 2.8444
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 10,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 4,
+    "TM": 16,
+    "TN": 4,
+    "PAD": 4,
+    "threads": 64,
+    "smem_bytes": 2112
+   },
+   "origin": "neighbor",
+   "why": "best-predicted neighbor of incumbent",
+   "ok": true,
+   "error": null,
+   "gflops": 3793.66,
+   "ms": 4.5286,
+   "profile": {
+    "regs": 110,
+    "local_bytes": 0,
+    "static_smem": 2112,
+    "blocks_per_sm": 9,
+    "occupancy": 0.5625,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 0.5625,
+    "bank": {
+     "store_As": 2,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3444.9251,
+    "waves": 2.8444
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 11,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 4,
+    "TM": 16,
+    "TN": 2,
+    "PAD": 8,
+    "threads": 128,
+    "smem_bytes": 2176
+   },
+   "origin": "neighbor",
+   "why": "best-predicted neighbor of incumbent",
+   "ok": true,
+   "error": null,
+   "gflops": 2877,
+   "ms": 5.9715,
+   "profile": {
+    "regs": 76,
+    "local_bytes": 0,
+    "static_smem": 2176,
+    "blocks_per_sm": 6,
+    "occupancy": 0.75,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 0.75,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3052.3106,
+    "waves": 4.2667
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 12,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 8,
+    "TM": 16,
+    "TN": 4,
+    "PAD": 4,
+    "threads": 64,
+    "smem_bytes": 4224
+   },
+   "origin": "cost-model",
+   "why": "next best predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 3840.15,
+   "ms": 4.4737,
+   "profile": {
+    "regs": 110,
+    "local_bytes": 0,
+    "static_smem": 4224,
+    "blocks_per_sm": 9,
+    "occupancy": 0.5625,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 0.5625,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3758.1001,
+    "waves": 2.8444
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 13,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 4,
+    "TM": 8,
+    "TN": 8,
+    "PAD": 4,
+    "threads": 64,
+    "smem_bytes": 2112
+   },
+   "origin": "cost-model",
+   "why": "next best predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 3157.11,
+   "ms": 5.4417,
+   "profile": {
+    "regs": 106,
+    "local_bytes": 0,
+    "static_smem": 2112,
+    "blocks_per_sm": 9,
+    "occupancy": 0.5625,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 0.5625,
+    "bank": {
+     "store_As": 2,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3540.6175,
+    "waves": 2.8444
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 14,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 8,
+    "TM": 8,
+    "TN": 8,
+    "PAD": 2,
+    "threads": 64,
+    "smem_bytes": 4160
+   },
+   "origin": "cost-model",
+   "why": "next best predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 3248.12,
+   "ms": 5.2892,
+   "profile": {
+    "regs": 106,
+    "local_bytes": 0,
+    "static_smem": 4160,
+    "blocks_per_sm": 9,
+    "occupancy": 0.5625,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 0.5625,
+    "bank": {
+     "store_As": 2,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3540.6175,
+    "waves": 2.8444
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 15,
+   "cfg": {
+    "BM": 64,
+    "BN": 64,
+    "BK": 8,
+    "TM": 8,
+    "TN": 8,
+    "PAD": 8,
+    "threads": 64,
+    "smem_bytes": 4352
+   },
+   "origin": "cost-model",
+   "why": "next best predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 4041.21,
+   "ms": 4.2512,
+   "profile": {
+    "regs": 106,
+    "local_bytes": 0,
+    "static_smem": 4352,
+    "blocks_per_sm": 9,
+    "occupancy": 0.5625,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict",
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 15.7538,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5041.2308,
+    "memory_bound": true,
+    "occupancy": 0.5625,
+    "bank": {
+     "store_As": 2,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3540.6175,
+    "waves": 2.8444
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 16,
+   "cfg": {
+    "BM": 256,
+    "BN": 32,
+    "BK": 32,
+    "TM": 4,
+    "TN": 4,
+    "PAD": 1,
+    "threads": 512,
+    "smem_bytes": 36992
+   },
+   "origin": "cost-model",
+   "why": "next best predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 3365.73,
+   "ms": 5.1044,
+   "profile": {
+    "regs": 50,
+    "local_bytes": 0,
+    "static_smem": 36992,
+    "blocks_per_sm": 1,
+    "occupancy": 0.5,
+    "max_err": 0
+   },
+   "symptoms": [
+    "memory_bound"
+   ],
+   "modeled": {
+    "ai": 14.0274,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 4488.7671,
+    "memory_bound": true,
+    "occupancy": 0.5,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 1
+    },
+    "bank_degree": 1,
+    "spill_regs": 0,
+    "predicted_gflops": 3535.7673,
+    "waves": 12.8
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 17,
+   "cfg": {
+    "BM": 128,
+    "BN": 64,
+    "BK": 32,
+    "TM": 4,
+    "TN": 8,
+    "PAD": 1,
+    "threads": 256,
+    "smem_bytes": 24704
+   },
+   "origin": "cost-model",
+   "why": "next best predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 4023.05,
+   "ms": 4.2704,
+   "profile": {
+    "regs": 70,
+    "local_bytes": 0,
+    "static_smem": 24704,
+    "blocks_per_sm": 2,
+    "occupancy": 0.5,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict"
+   ],
+   "modeled": {
+    "ai": 20.898,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5047.42,
+    "memory_bound": false,
+    "occupancy": 0.5,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3532.849,
+    "waves": 6.4
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 18,
+   "cfg": {
+    "BM": 128,
+    "BN": 64,
+    "BK": 32,
+    "TM": 8,
+    "TN": 4,
+    "PAD": 1,
+    "threads": 256,
+    "smem_bytes": 24704
+   },
+   "origin": "cost-model",
+   "why": "next best predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 3173.27,
+   "ms": 5.4139,
+   "profile": {
+    "regs": 70,
+    "local_bytes": 0,
+    "static_smem": 24704,
+    "blocks_per_sm": 2,
+    "occupancy": 0.5,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict"
+   ],
+   "modeled": {
+    "ai": 20.898,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5047.42,
+    "memory_bound": false,
+    "occupancy": 0.5,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3532.849,
+    "waves": 6.4
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 19,
+   "cfg": {
+    "BM": 256,
+    "BN": 64,
+    "BK": 4,
+    "TM": 4,
+    "TN": 8,
+    "PAD": 8,
+    "threads": 512,
+    "smem_bytes": 5248
+   },
+   "origin": "cost-model",
+   "why": "next best predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 3878.53,
+   "ms": 4.4295,
+   "profile": {
+    "regs": 70,
+    "local_bytes": 0,
+    "static_smem": 5248,
+    "blocks_per_sm": 1,
+    "occupancy": 0.5,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict"
+   ],
+   "modeled": {
+    "ai": 24.9756,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5047.42,
+    "memory_bound": false,
+    "occupancy": 0.5,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3532.849,
+    "waves": 6.4
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 20,
+   "cfg": {
+    "BM": 256,
+    "BN": 64,
+    "BK": 4,
+    "TM": 8,
+    "TN": 4,
+    "PAD": 8,
+    "threads": 512,
+    "smem_bytes": 5248
+   },
+   "origin": "cost-model",
+   "why": "next best predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 3572.18,
+   "ms": 4.8093,
+   "profile": {
+    "regs": 70,
+    "local_bytes": 0,
+    "static_smem": 5248,
+    "blocks_per_sm": 1,
+    "occupancy": 0.5,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict"
+   ],
+   "modeled": {
+    "ai": 24.9756,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5047.42,
+    "memory_bound": false,
+    "occupancy": 0.5,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3532.849,
+    "waves": 6.4
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 21,
+   "cfg": {
+    "BM": 256,
+    "BN": 64,
+    "BK": 8,
+    "TM": 4,
+    "TN": 8,
+    "PAD": 4,
+    "threads": 512,
+    "smem_bytes": 10368
+   },
+   "origin": "cost-model",
+   "why": "next best predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 3755.94,
+   "ms": 4.5741,
+   "profile": {
+    "regs": 70,
+    "local_bytes": 0,
+    "static_smem": 10368,
+    "blocks_per_sm": 1,
+    "occupancy": 0.5,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict"
+   ],
+   "modeled": {
+    "ai": 24.9756,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5047.42,
+    "memory_bound": false,
+    "occupancy": 0.5,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3532.849,
+    "waves": 6.4
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 22,
+   "cfg": {
+    "BM": 256,
+    "BN": 64,
+    "BK": 8,
+    "TM": 8,
+    "TN": 4,
+    "PAD": 4,
+    "threads": 512,
+    "smem_bytes": 10368
+   },
+   "origin": "cost-model",
+   "why": "next best predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 3975.22,
+   "ms": 4.3217,
+   "profile": {
+    "regs": 70,
+    "local_bytes": 0,
+    "static_smem": 10368,
+    "blocks_per_sm": 1,
+    "occupancy": 0.5,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict"
+   ],
+   "modeled": {
+    "ai": 24.9756,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5047.42,
+    "memory_bound": false,
+    "occupancy": 0.5,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3532.849,
+    "waves": 6.4
+   },
+   "cublas_gflops": null
+  },
+  {
+   "i": 23,
+   "cfg": {
+    "BM": 256,
+    "BN": 64,
+    "BK": 16,
+    "TM": 4,
+    "TN": 8,
+    "PAD": 2,
+    "threads": 512,
+    "smem_bytes": 20608
+   },
+   "origin": "cost-model",
+   "why": "next best predicted",
+   "ok": true,
+   "error": null,
+   "gflops": 3164.38,
+   "ms": 5.4291,
+   "profile": {
+    "regs": 70,
+    "local_bytes": 0,
+    "static_smem": 20608,
+    "blocks_per_sm": 1,
+    "occupancy": 0.5,
+    "max_err": 0
+   },
+   "symptoms": [
+    "bank_conflict"
+   ],
+   "modeled": {
+    "ai": 24.9756,
+    "ai_ideal": 341.3333,
+    "roof_gflops": 5047.42,
+    "memory_bound": false,
+    "occupancy": 0.5,
+    "bank": {
+     "store_As": 1,
+     "read_As": 1,
+     "read_Bs": 2
+    },
+    "bank_degree": 2,
+    "spill_regs": 0,
+    "predicted_gflops": 3532.849,
+    "waves": 6.4
+   },
+   "cublas_gflops": null
+  }
+ ],
+ "stages": [
+  {
+   "name": "CUDA C++ source",
+   "lang": "cuda",
+   "text": "// build flags: -DBM=64 -DBN=64 -DBK=4 -DTM=16 -DTN=4 -DPAD=8\n// gemm_bias_gelu.cu — parametric register-blocked SGEMM with fused bias + GELU epilogue.\n//\n// Role in the project:\n//   * Day-1 backend (\"nvcc-ptx\"): lets the autotuner, harness, and studio run end-to-end\n//     before your MLIR pipeline can lower anything.\n//   * Oracle/baseline: your MLIR-generated PTX must beat or approach this, and be compared\n//     against cuBLAS. Never compare only against a deliberately naive kernel.\n//\n// Tunables (pass with -D): BM BN BK TM TN PAD\n//   block tile BM x BN, K-step BK, per-thread micro-tile TM x TN,\n//   PAD = extra floats per row of the transposed A tile in shared memory (bank conflicts).\n// Constraints (enforced by tuner/space.py):  M%BM==0, N%BN==0, K%BK==0,\n//   threads = (BM/TM)*(BN/TN) in [64, 1024].\n//\n// Launch:  grid = (N/BN, M/BM, 1), block = (BM/TM)*(BN/TN)\n#ifndef BM\n#define BM 64\n#endif\n#ifndef BN\n#define BN 64\n#endif\n#ifndef BK\n#define BK 8\n#endif\n#ifndef TM\n#define TM 4\n#endif\n#ifndef TN\n#define TN 4\n#endif\n#ifndef PAD\n#define PAD 0\n#endif\n\n#define THREADS ((BM / TM) * (BN / TN))\n\n__device__ __forceinline__ float gelu_tanh(float x) {\n  const float k0 = 0.7978845608028654f, k1 = 0.044715f;\n  return 0.5f * x * (1.0f + tanhf(k0 * (x + k1 * x * x * x)));\n}\n\nextern \"C\" __global__ void __launch_bounds__(THREADS)\ngemm_bias_gelu(const float *__restrict__ A, const float *__restrict__ B,\n               const float *__restrict__ bias, float *__restrict__ C, int M, int N, int K) {\n  __shared__ float As[BK][BM + PAD]; // A tile stored transposed: As[k][m]\n  __shared__ float Bs[BK][BN];\n\n  const int tid = threadIdx.x;\n  const int tx = tid % (BN / TN);\n  const int ty = tid / (BN / TN);\n  const int rowBase = blockIdx.y * BM;\n  const int colBase = blockIdx.x * BN;\n\n  float acc[TM][TN];\n#pragma unroll\n  for (int i = 0; i < TM; ++i)\n#pragma unroll\n    for (int j = 0; j < TN; ++j) acc[i][j] = 0.f;\n\n  float regA[TM], regB[TN];\n\n  for (int bk = 0; bk < K; bk += BK) {\n    // cooperative loads (strided so any THREADS works)\n    for (int i = tid; i < BM * BK; i += THREADS) {\n      int r = i / BK, c = i % BK;\n      As[c][r] = A[(size_t)(rowBase + r) * K + bk + c];\n    }\n    for (int i = tid; i < BK * BN; i += THREADS) {\n      int r = i / BN, c = i % BN;\n      Bs[r][c] = B[(size_t)(bk + r) * N + colBase + c];\n    }\n    __syncthreads();\n\n#pragma unroll\n    for (int k = 0; k < BK; ++k) {\n#pragma unroll\n      for (int i = 0; i < TM; ++i) regA[i] = As[k][ty * TM + i];\n#pragma unroll\n      for (int j = 0; j < TN; ++j) regB[j] = Bs[k][tx * TN + j];\n#pragma unroll\n      for (int i = 0; i < TM; ++i)\n#pragma unroll\n        for (int j = 0; j < TN; ++j) acc[i][j] = fmaf(regA[i], regB[j], acc[i][j]);\n    }\n    __syncthreads();\n  }\n\n  // fused epilogue: bias + GELU stay in registers — no intermediate tensor in HBM\n#pragma unroll\n  for (int i = 0; i < TM; ++i) {\n    int r = rowBase + ty * TM + i;\n#pragma unroll\n    for (int j = 0; j < TN; ++j) {\n      int c = colBase + tx * TN + j;\n      C[(size_t)r * N + c] = gelu_tanh(acc[i][j] + bias[c]);\n    }\n  }\n}\n"
+  },
+  {
+   "name": "LLVM IR",
+   "lang": "llvm",
+   "text": "(simulated run: no compiler or GPU was used, so there is no real IR here)"
+  },
+  {
+   "name": "PTX",
+   "lang": "ptx",
+   "text": "(simulated run: no compiler or GPU was used, so there is no real IR here)"
+  }
+ ]
+}
