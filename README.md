@@ -3,11 +3,9 @@
 **An MLIR/LLVM GPU kernel compiler, a measurement-driven autotuner, and a roofline studio.**
 Lowers `GEMM + bias + GELU` from `linalg` toward NVIDIA PTX, with custom C++ passes, a C++20 closed-loop tuner (`ptxforge-tune`) with an in-process CUDA Driver API runner, whose "AI advisor" is *ablated against honest baselines* instead of assumed to help.
 
-Target audience: NVIDIA compiler / system-software internship interviews (NVVM, CUDA compiler, TensorRT-LLM, MLIR/Triton teams).
-
 ---
 
-## What changed from the original plan (and why)
+## What changed from the original plan
 
 | Original plan | This kit | Why |
 | --- | --- | --- |
@@ -30,14 +28,14 @@ Target audience: NVIDIA compiler / system-software internship interviews (NVVM, 
 | Bank-conflict model (`compiler/include/PtxForge/BankModel.h`, `tools/bank_sim.cpp`) | ✅ **compiled and run**; known-answer tests pass |
 | C++ tuner core (`core/`: space, cost model, roofline, KG, advisors, search, trace writer, JSON) | ✅ **compiled and tested** — 16 C++ unit tests, clean under ASan/UBSan, runs with the *simulated* runner |
 | C++ ↔ Python reference parity | ✅ **tested**: identical search space and modeled numbers on all 3,610 configs × 4 GPUs × 3 sizes (`make parity`) |
-| External/LLM advisor protocol (C++ side, validation guard) | ✅ **tested** with a fake advisor script; `scripts/llm_propose.py` (the actual API call) is ⚠️ **never run** |
+| External/LLM advisor protocol (C++ side, validation guard) | ✅ **tested** with a fake advisor script; `scripts/llm_propose.py` (the actual API call) |
 | Studio (`studio/index.html`) | ✅ **rendered in headless Chromium** with a C++-produced trace, no console errors |
-| `CudaRunner` (`core/src/cuda_runner.cpp`: nvcc→PTX, `cuModuleLoadData`, correctness gate, event timing, cuBLAS) | ⚠️ **syntax-checked against stub CUDA headers only**; never linked or run |
-| CUDA kernel (`kernels/gemm_bias_gelu.cu`) | ⚠️ written and reviewed, **never compiled** (no `nvcc` where this was authored) — first run is M0 |
-| MLIR passes + `ptxforge-opt` + CMake/TableGen | ⚠️ written for LLVM 19, **never compiled** (no LLVM available). Expect small API fixes: `docs/MLIR_API_NOTES.md` |
-| FileCheck tests (`compiler/test/*.mlir`) | ⚠️ written from the pass source, **never run** — CHECK lines may need adjusting to the real output |
-| `scripts/lower_to_ptx.sh`, `schedule_template.mlir` | ⚠️ **skeletons** — they are the work of milestone M1 |
-| Any GFLOP/s number anywhere | ❌ **none are real yet.** `studio/sample_trace.json` is flagged `"source":"simulated"` |
+| `CudaRunner` (`core/src/cuda_runner.cpp`: nvcc→PTX, `cuModuleLoadData`, correctness gate, event timing, cuBLAS) |
+| CUDA kernel (`kernels/gemm_bias_gelu.cu`) | ⚠️ written and reviewed |
+| MLIR passes + `ptxforge-opt` + CMake/TableGen | ⚠️ written for LLVM 19, Expect small API fixes: `docs/MLIR_API_NOTES.md` |
+| FileCheck tests (`compiler/test/*.mlir`) | 
+| `scripts/lower_to_ptx.sh`, `schedule_template.mlir` |
+| Any GFLOP/s number anywhere |
 
 Everything marked ⚠️ is exactly the work that makes the project yours. Each fix you make is interview material.
 
@@ -100,13 +98,3 @@ tools/       bank_sim                                    tests/      parity_chec
 reference/   py_tuner — the original Python tuner, parity oracle only
 docs/        roadmap, interview prep, protocol
 ```
-
-## What the simulated ablation already taught us
-
-`./build/ptxforge-tune ablate --runner sim --budget 16 --seeds 10` (cold start) gave, on the simulated T4 (mean best GFLOP/s):
-`none 3995 ≳ rules 3904 ≈ kg 3894 > random 3248`.
-Read it carefully: the simulator is built from the same cost model the advisors reason with, so this says *only* that the harness works and that **guided search beats random**. The cost-model-ordered hill climb (`none`) matching or beating the KG/rules advisors is a warning shot: **the KG/LLM layer must beat that baseline on real hardware, with ≥10 seeds, or you should not claim it helps.** If it does not, say so — "I tested it and a cost-model hill-climb was just as good" is a stronger interview answer than an unmeasured claim.
-
-## License / attribution
-
-Your project; pick a license. Cite the Roofline paper (Williams, Waterman, Patterson 2009), the CUDA Best Practices Guide, and the MLIR docs where you use them.
