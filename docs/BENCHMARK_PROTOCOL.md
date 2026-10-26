@@ -1,4 +1,4 @@
-# Benchmark protocol — so your numbers survive an interviewer's questions
+# Benchmark protocol
 
 1. **Correctness before speed.** The harness gates timing on a sampled fp64 CPU reference (`--samples 512`). A config that fails the gate is recorded as failed and can never be "best".
 2. **Same work, same inputs.** Identical shapes, data (fixed seed) and epilogue across variants. cuBLAS SGEMM has no GELU epilogue, so it is a *GEMM-only upper reference*; say so. (For an apples-to-apples epilogue comparison, time GEMM + a separate elementwise kernel.)
@@ -9,4 +9,4 @@
 7. **Record the environment** in the trace/README: GPU, driver, CUDA version, nvcc flags, LLVM commit, git SHA.
 8. **Roofline honesty.** Pre-M4 the x-axis is *modeled* tile traffic (no L2 reuse credit), not measured DRAM bytes. Label it that way (the studio does). Post-M4 plot both.
 9. **Ablation hygiene.** Same budget, same seeds, cold start, ≥10 seeds, report mean ± std and the max. A single seed proves nothing.
-10. **Simulated ≠ measured.** `"source":"simulated"` traces are for testing the tool. They must never appear in a README table, slide or resume.
+10. **Simulated ≠ measured.** `"source":"simulated"` traces are for testing the tool. They must never appear in a README table or slide.

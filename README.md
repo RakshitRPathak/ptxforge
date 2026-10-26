@@ -1,27 +1,28 @@
 # PTXForge
 
+[![test](https://github.com/RakshitRPathak/ptxforge/actions/workflows/ci.yml/badge.svg)](https://github.com/RakshitRPathak/ptxforge/actions/workflows/ci.yml)
+
 **An MLIR/LLVM GPU kernel compiler, a measurement-driven autotuner, and a roofline studio.**
 Lowers `GEMM + bias + GELU` from `linalg` toward NVIDIA PTX, with custom C++ passes, a C++20 closed-loop tuner (`ptxforge-tune`) with an in-process CUDA Driver API runner, whose "AI advisor" is *ablated against honest baselines* instead of assumed to help.
 
 ---
 
-## What changed from the original plan
+## Design decisions
 
-| Original plan | This kit | Why |
+| Alternative | Chosen design | Why |
 | --- | --- | --- |
-| MLIR pipeline is the only path | **Two backends behind one interface:** `nvcc-ptx` (day 1) and `mlir` (the real thing) | You get a working loop, real GPU numbers and a studio in week 1 instead of blocking on an LLVM build. The nvcc kernel then becomes the **oracle** your MLIR output must approach. |
-| Three custom passes incl. "NVVM→PTX lowering" | **Two custom passes** (`fuse-epilogue`, `pad-workgroup-memory`) built *on top of* upstream patterns + a **transform-dialect schedule** for tiling | NVVM→PTX lowering already exists upstream; re-implementing it is not a defensible contribution. Using `populateElementwiseOpsFusionPatterns` with your own control function, and driving tiling from a generated schedule, is how real MLIR projects work. |
+| MLIR pipeline is the only path | **Two backends behind one interface:** `nvcc-ptx` (day 1) and `mlir` (the real thing) | This gives a working loop, real GPU numbers and a studio in week 1 instead of blocking on an LLVM build. The nvcc kernel then becomes the **oracle** the MLIR output must approach. |
+| Three custom passes incl. "NVVM→PTX lowering" | **Two custom passes** (`fuse-epilogue`, `pad-workgroup-memory`) built *on top of* upstream patterns + a **transform-dialect schedule** for tiling | NVVM→PTX lowering already exists upstream; re-implementing it is not a defensible contribution. Using `populateElementwiseOpsFusionPatterns` with a custom control function, and driving tiling from a generated schedule, is how real MLIR projects work. |
 | Recompile passes per tuning trial | Tuner **renders a transform schedule** (`scripts/schedule_template.mlir`) per config | New tile sizes need no C++ rebuild → trials are seconds. |
-| "GraphRAG agent finds the optimum" | Analytic **cost model + roofline prior**, neighbor hill-climb, and advisors `none / random / rules / kg / llm` that are **compared in an ablation** | An LLM in the loop is a hypothesis, not a result. The kit makes you *test* it. The LLM can only suggest; invalid/hallucinated configs are rejected in code, and every suggestion is benchmarked. |
+| "GraphRAG agent finds the optimum" | Analytic **cost model + roofline prior**, neighbor hill-climb, and advisors `none / random / rules / kg / llm` that are **compared in an ablation** | An LLM in the loop is a hypothesis, not a result. Here it is *tested*. The LLM can only suggest; invalid/hallucinated configs are rejected in code, and every suggestion is benchmarked. |
 | CUPTI counters from the start | **Driver-API attributes first** (regs, spill bytes, occupancy, blocks/SM, correctness, GFLOP/s, cuBLAS baseline); CUPTI/ncu in milestone M4 | Works on a free Colab T4 where hardware counters are often blocked. |
 | Correctness assumed | **Correctness gate before timing** (sampled CPU reference, fp64) | A fast wrong kernel is the classic autotuner bug. |
-| Resume bullet: "2.4× speedup, 88% of cuBLAS on FP16" | **Removed.** Numbers must come from your own trace files (see `docs/RESUME_BULLETS.md`) | Those figures were placeholders in the original text, not measurements. Interviewers ask for the trace. Also: the shipped kernel is **FP32 SGEMM**; FP16 tensor cores are milestone M3. |
 | Python tuner |  **C++20 tuner** (`core/`); Python only for glue | The project is a compiler/systems project: the search, cost model, KG and runner are C++ (header-only core + one CLI). The original Python tuner is kept in `reference/py_tuner/` purely as a parity oracle. |
-| Next.js + gRPC studio | **Zero-dependency studio** (one HTML file, trace embedded) | Ship the insight first, port to Next.js/gRPC later if you want the full-stack story. |
+| Next.js + gRPC studio | **Zero-dependency studio** (one HTML file, trace embedded) | Ship the insight first, port to Next.js/gRPC later. |
 
 ---
 
-## Status — be precise about this in interviews
+## Status
 
 | Component | State |
 | --- | --- |
@@ -37,7 +38,7 @@ Lowers `GEMM + bias + GELU` from `linalg` toward NVIDIA PTX, with custom C++ pas
 | `scripts/lower_to_ptx.sh`, `schedule_template.mlir` |
 | Any GFLOP/s number anywhere |
 
-Everything marked ⚠️ is exactly the work that makes the project yours. Each fix you make is interview material.
+⚠️ = written but not yet built or run on real hardware. The shipped kernel is FP32 SGEMM; FP16 tensor cores are milestone M3. No GPU performance numbers are reported until they come from measured traces.
 
 ---
 
@@ -64,7 +65,7 @@ Everything marked ⚠️ is exactly the work that makes the project yours. Each 
               └──────────────────────────────┘
 ```
 
-**Language split** (lines, this kit): C++/CUDA ≈ 2,700 (tuner core + CUDA runner + MLIR passes + tests + tools) · shipped Python ≈ 120 (studio embedding, parity script, optional LLM API bridge) · Python reference tuner ≈ 1,300 (kept only to prove the C++ port is faithful; not needed to run anything).
+**Language split** (lines): C++/CUDA ≈ 2,700 (tuner core + CUDA runner + MLIR passes + tests + tools) · shipped Python ≈ 120 (studio embedding, parity script, optional LLM API bridge) · Python reference tuner ≈ 1,300 (kept only to prove the C++ port is faithful; not needed to run anything).
 
 ## Quick start
 
@@ -96,5 +97,5 @@ kernels/     parametric CUDA oracle kernel               knowledge/  seed knowle
 studio/      roofline/IR/trials viewer                   scripts/    lowering skeleton, schedule template, Colab setup, LLM bridge
 tools/       bank_sim                                    tests/      parity_check.py
 reference/   py_tuner — the original Python tuner, parity oracle only
-docs/        roadmap, interview prep, protocol
+docs/        roadmap, benchmark protocol, MLIR API notes
 ```

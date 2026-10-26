@@ -27,4 +27,4 @@ Colab/Kaggle often block hardware counters (`CUPTI_ERROR_INSUFFICIENT_PRIVILEGES
 
 Until M4 the studio plots **analytic** arithmetic intensity (FLOPs / modelled DRAM bytes).
 After M4 it should plot **measured** AI = FLOPs / `dram__bytes`. Keep both on the chart —
-the gap between them is a finding (L2 reuse, uncoalesced loads) and good interview material.
+the gap between them is a finding (L2 reuse, uncoalesced loads).

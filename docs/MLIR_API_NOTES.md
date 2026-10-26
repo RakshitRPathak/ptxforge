@@ -2,8 +2,7 @@
 
 The C++ passes were written for **LLVM/MLIR 19** and have **not been compiled** by the kit's author
 (no LLVM available in the authoring sandbox). Expect a handful of compile errors on first build;
-this table covers the ones most likely to bite. Fixing them is milestone M1 and is real learning —
-note each fix in your dev log, it is interview material.
+this table covers the ones most likely to bite. Fixing them is milestone M1; each fix is recorded in the dev log.
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
