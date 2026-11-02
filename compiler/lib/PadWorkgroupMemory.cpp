@@ -18,6 +18,8 @@
 #define DEBUG_TYPE "ptxforge-pad-workgroup-memory"
 
 namespace ptxforge {
+// A pass with options needs its generated Options struct (GEN_PASS_DECL_*) before the base class.
+#define GEN_PASS_DECL_PADWORKGROUPMEMORY
 #define GEN_PASS_DEF_PADWORKGROUPMEMORY
 #include "PtxForge/Passes.h.inc"
 } // namespace ptxforge
