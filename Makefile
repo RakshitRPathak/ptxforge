@@ -32,7 +32,7 @@ demo: build/ptxforge-tune  ## SIMULATED end-to-end run (NOT real numbers) -> stu
 	./build/ptxforge-tune tune --runner sim --gpu t4 --advisor kg --budget 24 --out runs/sim.json
 	$(PY) scripts/make_studio.py runs/sim.json studio/demo_simulated.html
 
-cuda:  ## real GPU runner (needs CUDA toolkit + a GPU). Never built in the authoring sandbox.
+cuda:  ## real GPU runner (needs CUDA toolkit + a GPU). Built and run on a Colab T4.
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) $(INC) -DPTXFORGE_WITH_CUDA -DPTXFORGE_WITH_CUBLAS \
 	    core/src/main.cpp core/src/cuda_runner.cpp -o build/ptxforge-tune-cuda \

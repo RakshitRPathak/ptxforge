@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Colab / Kaggle (T4, P100) setup for milestones M0-M3 — no LLVM build needed.
 # In a notebook cell:   !bash scripts/colab_setup.sh
-# STATUS: the CUDA build below has never been run by the author (no GPU in the authoring sandbox).
+# STATUS: built and run on a Colab Tesla T4 (October 2026).
 set -euo pipefail
 
 nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv

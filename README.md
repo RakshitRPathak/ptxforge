@@ -31,14 +31,35 @@ Lowers `GEMM + bias + GELU` from `linalg` toward NVIDIA PTX, with custom C++ pas
 | C++ ↔ Python reference parity | ✅ **tested**: identical search space and modeled numbers on all 3,610 configs × 4 GPUs × 3 sizes (`make parity`) |
 | External/LLM advisor protocol (C++ side, validation guard) | ✅ **tested** with a fake advisor script; `scripts/llm_propose.py` (the actual API call) |
 | Studio (`studio/index.html`) | ✅ **rendered in headless Chromium** with a C++-produced trace, no console errors |
-| `CudaRunner` (`core/src/cuda_runner.cpp`: nvcc→PTX, `cuModuleLoadData`, correctness gate, event timing, cuBLAS) | ⚠️ written; not yet run on a GPU |
-| CUDA kernel (`kernels/gemm_bias_gelu.cu`) | ⚠️ written and reviewed |
+| `CudaRunner` (`core/src/cuda_runner.cpp`: nvcc→PTX, `cuModuleLoadData`, correctness gate, event timing, cuBLAS) | ✅ **built and run on a Tesla T4** (Colab), including the cuBLAS baseline |
+| CUDA kernel (`kernels/gemm_bias_gelu.cu`) | ✅ **built with nvcc and measured on a T4**: see Results |
 | MLIR passes + `ptxforge-opt` + CMake/TableGen | ⚠️ written for LLVM 19, Expect small API fixes: `docs/MLIR_API_NOTES.md` |
 | FileCheck tests (`compiler/test/*.mlir`) | ⚠️ written; not yet run (needs an LLVM 19 build) |
 | `scripts/lower_to_ptx.sh`, `schedule_template.mlir` | ⚠️ written; not yet run end to end |
-| Any GFLOP/s number anywhere | ❌ none yet: no measured GPU results are reported |
+| Measured GPU results | ✅ one 40-trial tuning run on a T4 (see Results); advisor ablation on real hardware not yet run |
 
-⚠️ = written but not yet built or run on real hardware. The shipped kernel is FP32 SGEMM; FP16 tensor cores are milestone M3. No GPU performance numbers are reported until they come from measured traces.
+⚠️ = written but not yet built or run on real hardware. The shipped kernel is FP32 SGEMM; FP16 tensor cores are milestone M3. Every number in Results comes from a measured trace (`source: harness`), never from the simulator.
+
+---
+
+## Results
+
+**Tesla T4 (Google Colab), `nvcc` backend, GEMM + bias + GELU at M = N = K = 2048, FP32, 40 measured trials, `kg` advisor.** The correctness gate checks each candidate against an fp64 reference before it is timed.
+
+| | GFLOP/s | |
+|---|---:|---|
+| Untuned default config | 2,074.0 | the baseline every speedup is measured against |
+| Best config found | **3,688.5** | **1.78×** the default |
+| cuBLAS SGEMM, same shapes, same run | 4,307.5 | best is **85.6%** of cuBLAS |
+
+GFLOP/s counts only the 2·M·N·K GEMM FLOPs. cuBLAS runs a plain SGEMM while PTXForge's kernel also applies the bias + GELU epilogue, so 85.6% slightly understates the fused kernel.
+
+**The cost model mis-ranked the configs it was steering towards: Spearman ρ = −0.67** between predicted and measured GFLOP/s over the 40 trials. Two notes on reading it:
+
+- The 40 trials are not a random sample. The search concentrates on configs the prior already rates highly, so this shows the model cannot order *near-optimal* configs on a T4, not that it is wrong across the whole space.
+- It is still the key result. The tuner reached 85.6% of cuBLAS because it times every candidate and keeps the measured best, not because the model's ranking was right. That is the case for closed-loop measurement over a static cost model.
+
+Next experiments: rank correlation on a random sample of configs (to measure the model globally), the `none / random / rules / kg` advisor ablation with `--runner cuda`, and finding which roofline term (occupancy, register cap, wave quantization) causes the inversion.
 
 ---
 
