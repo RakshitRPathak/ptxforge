@@ -5,3 +5,4 @@ __pycache__/
 runs/*.json
 !runs/.gitkeep
 studio/report.html
+build-mlir/

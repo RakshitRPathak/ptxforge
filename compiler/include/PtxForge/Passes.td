@@ -43,4 +43,29 @@ def PadWorkgroupMemory : Pass<"ptxforge-pad-workgroup-memory"> {
   let dependentDialects = ["mlir::memref::MemRefDialect", "mlir::gpu::GPUDialect"];
 }
 
+def ApproximateMath : Pass<"ptxforge-approximate-math"> {
+  let constructor = "ptxforge::createApproximateMathPass()";
+  let summary = "Replace math.tanh, math.erf and math.absf with arith ops so NVPTX needs no libdevice";
+  let description = [{
+    GELU needs tanh (or erf). On NVPTX, convert-gpu-to-nvvm turns these into calls to CUDA's
+    libdevice (`__nv_tanhf`, `__nv_erff`), which then has to be found and linked from a CUDA
+    toolkit. This pass rewrites them first into the upstream MLIR polynomial approximations,
+    which are plain arith ops, so the kernel lowers to self-contained PTX with no libdevice.
+    The f32 tanh approximation is the one XLA uses (maximum error a few ulp). `math.absf`, which
+    those approximations use and which LLVM 19's NVVM lowering also sends to libdevice, is rewritten
+    exactly as a sign-bit clear.
+  }];
+  let dependentDialects = ["mlir::arith::ArithDialect", "mlir::math::MathDialect"];
+}
+
+def EraseSelfCopies : Pass<"ptxforge-erase-self-copies"> {
+  let constructor = "ptxforge::createEraseSelfCopiesPass()";
+  let summary = "Erase memref.copy / linalg.copy ops whose source and target are the same buffer";
+  let description = [{
+    Bufferizing a tiled `scf.forall` writes each tile in place and then copies the subview onto
+    itself (the `tensor.parallel_insert_slice`). MLIR 19 does not fold these no-op copies; inside
+    a GPU kernel each one becomes a loop of redundant loads and stores, so this pass removes them.
+  }];
+}
+
 #endif // PTXFORGE_PASSES

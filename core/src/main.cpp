@@ -189,7 +189,9 @@ int cmd_schedule(const Args &a) {
   Config c = kDefaultConfig;
   for (Param p : kParams) c = c.with(p, a.geti(param_name(p), c.get(p)));
   std::string text = read_file(root_dir(a) + "/scripts/schedule_template.mlir");
-  const json::Value cj = c.to_json();
+  json::Value cj = c.to_json();
+  // Thread-block shape for map_nested_forall_to_threads: one thread per TM x TN micro-tile.
+  cj.set("TX", c.BN / c.TN).set("TY", c.BM / c.TM);
   for (size_t i = 0; i < cj.keys().size(); ++i) {
     const std::string needle = "{{" + cj.keys()[i] + "}}", val = cj.values()[i].dump();
     for (size_t pos = 0; (pos = text.find(needle, pos)) != std::string::npos; pos += val.size())

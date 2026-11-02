@@ -10,7 +10,10 @@ TEMPLATE = Path(__file__).resolve().parents[3] / "scripts" / "schedule_template.
 
 def render(cfg: Config, template: Path | None = None) -> str:
     text = (template or TEMPLATE).read_text()
-    for k, v in cfg.to_json().items():
+    values = dict(cfg.to_json())
+    # Thread-block shape for map_nested_forall_to_threads (same as `ptxforge-tune schedule`).
+    values.update(TX=cfg.BN // cfg.TN, TY=cfg.BM // cfg.TM)
+    for k, v in values.items():
         text = text.replace("{{" + k + "}}", str(v))
     if "{{" in text:
         leftover = text[text.index("{{"): text.index("{{") + 12]

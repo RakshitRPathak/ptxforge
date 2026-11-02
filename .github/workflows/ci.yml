@@ -10,3 +10,19 @@ jobs:
           python-version: "3.12"
       - run: make test
       - run: make demo
+
+  compiler:
+    # MLIR passes against Ubuntu's prebuilt LLVM/MLIR 19, then linalg -> PTX and a CPU numerical check.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LLVM/MLIR 19
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends llvm-19-dev llvm-19-tools libmlir-19-dev mlir-19-tools clang-19 ninja-build
+          pip install --break-system-packages lit numpy
+      - run: make compiler-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lowered-ir-sm75
+          path: build/ir/

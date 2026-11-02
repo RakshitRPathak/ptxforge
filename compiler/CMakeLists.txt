@@ -32,6 +32,8 @@ add_public_tablegen_target(PtxForgePassesIncGen)
 
 # --- library ----------------------------------------------------------------------
 add_mlir_library(PtxForgePasses
+  lib/ApproximateMath.cpp
+  lib/EraseSelfCopies.cpp
   lib/FuseEpilogue.cpp
   lib/PadWorkgroupMemory.cpp
 
@@ -45,6 +47,8 @@ add_mlir_library(PtxForgePasses
   MLIRLinalgDialect
   MLIRLinalgTransforms
   MLIRLinalgUtils
+  MLIRMathDialect
+  MLIRMathTransforms
   MLIRMemRefDialect
   MLIRPass
   MLIRTensorDialect
@@ -55,12 +59,14 @@ add_mlir_library(PtxForgePasses
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
 get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
+get_property(translation_libs GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
 
 add_llvm_executable(ptxforge-opt tools/ptxforge-opt.cpp)
 llvm_update_compile_flags(ptxforge-opt)
 target_link_libraries(ptxforge-opt PRIVATE
   PtxForgePasses
-  ${dialect_libs} ${conversion_libs} ${extension_libs}
+  ${dialect_libs} ${conversion_libs} ${extension_libs} ${translation_libs}
+  MLIRToLLVMIRTranslationRegistration
   MLIROptLib
   MLIRPass
 )
