@@ -62,7 +62,9 @@ def main():
     gpu = props["name"].decode() if isinstance(props["name"], bytes) else props["name"]
     print(f"GPU: {gpu} (sm_{props['major']}{props['minor']})  kernel: {kernel_name}  grid {grid}  block {block}")
 
-    kernel = cp.RawModule(code=ptx).get_function(kernel_name)
+    # path= hands the PTX to the CUDA driver (cuModuleLoad), which JIT-compiles it for this GPU.
+    # code= would instead treat it as CUDA C++ source and run NVRTC on it, which fails.
+    kernel = cp.RawModule(path=os.path.abspath(a.ptx)).get_function(kernel_name)
 
     rng = np.random.default_rng(0)
     A = cp.asarray((rng.standard_normal((n, n)) * 0.1).astype(np.float32))
