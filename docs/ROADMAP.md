@@ -12,6 +12,8 @@ Each milestone has an **exit test** — if you cannot demonstrate it, it is not 
 | **M5** | 7 | The science | Calibrate cost model (report Spearman); ablation on **real HW**: ≥10 seeds × ≥3 problem sizes × advisors `none/random/rules/kg(/llm)`; grow the KG from your own logs; write down the result **even if the KG loses** |
 | **M6** | 8 | Make it legible | Provenance in studio (MLIR `loc` → LLVM debug loc → PTX `.loc`), 2-page write-up, README GIF, headline numbers filled from traces only |
 
+**Second architecture (added 2026-11-17):** an `rtx5050` profile (Blackwell laptop, `sm_120`) is in the tuner and parity-tested, and `scripts/rtx5050_run.sh` runs M0's exit test on it. Not yet run. It feeds M5: the cost-model rank correlation on two architectures instead of one.
+
 ## Cut lines (if time runs out)
 
 1. Cut M3 first (tensor cores), keep FP32 — still a complete story.

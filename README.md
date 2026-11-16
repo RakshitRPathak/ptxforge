@@ -28,7 +28,7 @@ Lowers `GEMM + bias + GELU` from `linalg` to NVIDIA PTX with custom C++ passes a
 | --- | --- |
 | Bank-conflict model (`compiler/include/PtxForge/BankModel.h`, `tools/bank_sim.cpp`) | ✅ **compiled and run**; known-answer tests pass |
 | C++ tuner core (`core/`: space, cost model, roofline, KG, advisors, search, trace writer, JSON) | ✅ **compiled and tested** — 16 C++ unit tests, clean under ASan/UBSan, runs with the *simulated* runner |
-| C++ ↔ Python reference parity | ✅ **tested**: identical search space and modeled numbers on all 3,610 configs × 4 GPUs × 3 sizes (`make parity`) |
+| C++ ↔ Python reference parity | ✅ **tested**: identical search space and modeled numbers on all 3,610 configs × 5 GPUs × 3 sizes (`make parity`) |
 | External/LLM advisor protocol (C++ side, validation guard) | ✅ **tested** with a fake advisor script; `scripts/llm_propose.py` (the actual API call) |
 | Studio (`studio/index.html`) | ✅ **rendered in headless Chromium** with a C++-produced trace, no console errors |
 | `CudaRunner` (`core/src/cuda_runner.cpp`: nvcc→PTX, `cuModuleLoadData`, correctness gate, event timing, cuBLAS) | ✅ **built and run on a Tesla T4** (Colab), including the cuBLAS baseline |
@@ -40,6 +40,7 @@ Lowers `GEMM + bias + GELU` from `linalg` to NVIDIA PTX with custom C++ passes a
 | MLIR-generated PTX on a GPU | ⚠️ **not yet run**: `scripts/run_ptx_on_gpu.py` checks and times `kernels/generated/gemm_bias_gelu_2048_sm75.ptx` on a Colab T4 |
 | Shared-memory tiles in the MLIR path | ⚠️ not yet: A/B are read from global memory (through L1/L2), so `pad-workgroup-memory` has nothing to pad in this pipeline yet (milestone M2) |
 | Measured GPU results | ✅ one 40-trial tuning run on a T4 for the `nvcc` backend (see Results); advisor ablation on real hardware not yet run |
+| Second GPU architecture: RTX 5050 Laptop (Blackwell, `sm_120`) | ◐ profile `--gpu rtx5050` is in the tuner and the Python reference and passes the parity check; `scripts/rtx5050_run.sh` does the whole run. ⚠️ **No measured run yet** |
 
 ⚠️ = not done yet, as described. The shipped kernel is FP32 SGEMM; FP16 tensor cores are milestone M3. Every number in Results comes from a measured trace (`source: harness`), never from the simulator.
 
@@ -136,6 +137,16 @@ bash scripts/colab_setup.sh        # builds ptxforge-tune-cuda (nvcc→PTX→dri
 ./build/ptxforge-tune-cuda tune --runner cuda --gpu t4 --budget 40 --out runs/t4_2048.json
 python3 scripts/make_studio.py runs/t4_2048.json studio/t4.html
 ```
+**3. A second architecture: RTX 5050 Laptop GPU (Blackwell, `sm_120`), under WSL2 or Linux:**
+```bash
+bash scripts/rtx5050_run.sh        # smoke test, 40-trial tune vs cuBLAS, then the MLIR-generated PTX
+```
+The profile uses compute capability 12.0 limits (48 warps and 32 blocks per SM, 128 KB shared memory per SM), 384 GB/s
+of DRAM bandwidth and a `sustained` prior of 0.50, taken from cuBLAS SGEMM measuring 6.7–6.9 TFLOP/s on this laptop in
+[cuda-gpu-bench](https://github.com/RakshitRPathak/cuda-gpu-bench). The question this run answers: the cost model ranked
+near-optimal configs backwards on the T4 (ρ = −0.67); does it also do so on a GPU with far more cache and half the SMs?
+This has not been run yet, so there are no RTX 5050 numbers in Results.
+
 Optional LLM advisor: `export ANTHROPIC_API_KEY=…; ./build/ptxforge-tune-cuda tune --runner cuda --advisor llm --llm-cmd "python3 scripts/llm_propose.py"` — suggestions are validated in C++ before anything runs.
 
 **3. The compiler.** On Ubuntu 24.04 the prebuilt LLVM/MLIR 19 packages are enough (no source build, no CUDA toolkit):
