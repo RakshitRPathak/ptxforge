@@ -40,6 +40,10 @@ GPUS: dict[str, GPU] = {
     "p100": GPU("NVIDIA P100", "sm_60", 56, 9300, 732, 65536, 2048, 32, 65536, 49152, sustained=0.85),
     "l4": GPU("NVIDIA L4", "sm_89", 58, 30300, 300, 65536, 1536, 24, 102400, 49152, sustained=0.7),
     "a100": GPU("NVIDIA A100 40GB", "sm_80", 108, 19500, 1555, 65536, 2048, 32, 167936, 49152, sustained=0.85),
+    # Blackwell laptop part: 2560 cores x 2 FLOP x 2.662 GHz boost; 128-bit GDDR7 at 24 Gbps. Occupancy
+    # limits are compute capability 12.0. sustained = 0.50 from a measured cuBLAS SGEMM of 6.7-6.9 TFLOP/s.
+    "rtx5050": GPU("NVIDIA GeForce RTX 5050 Laptop", "sm_120", 20, 13629, 384, 65536, 1536, 32, 131072, 49152,
+                   sustained=0.5),
 }
 
 

@@ -14,7 +14,7 @@ from ptxforge_tuner.space import Config, Problem, enumerate_space  # noqa: E402
 
 exe = sys.argv[1] if len(sys.argv) > 1 else str(ROOT / "build" / "ptxforge-tune")
 bad = 0
-for gpu in ("t4", "p100", "l4", "a100"):
+for gpu in ("t4", "p100", "l4", "a100", "rtx5050"):
     for size in (1024, 2048, 4096):
         cpp = json.loads(subprocess.run([exe, "dump", "--gpu", gpu, "--M", str(size), "--N", str(size), "--K", str(size)],
                                         check=True, capture_output=True, text=True).stdout)

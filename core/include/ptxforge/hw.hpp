@@ -39,6 +39,11 @@ inline const std::vector<GPU> &all_gpus() {
       {"p100", "NVIDIA P100", "sm_60", 56, 9300, 732, 65536, 2048, 32, 65536, 49152, 0.85},
       {"l4", "NVIDIA L4", "sm_89", 58, 30300, 300, 65536, 1536, 24, 102400, 49152, 0.70},
       {"a100", "NVIDIA A100 40GB", "sm_80", 108, 19500, 1555, 65536, 2048, 32, 167936, 49152, 0.85},
+      // Blackwell laptop part: 2560 cores x 2 FLOP x 2.662 GHz boost; 128-bit GDDR7 at 24 Gbps.
+      // Occupancy limits are compute capability 12.0 (48 warps, 32 blocks, 128 KB shared per SM).
+      // sustained = 0.50 because cuBLAS SGEMM measured 6.7-6.9 TFLOP/s on this laptop
+      // (cuda-gpu-bench); laptop clocks follow the power limit, so re-measure on yours.
+      {"rtx5050", "NVIDIA GeForce RTX 5050 Laptop", "sm_120", 20, 13629, 384, 65536, 1536, 32, 131072, 49152, 0.50},
   };
   return g;
 }
