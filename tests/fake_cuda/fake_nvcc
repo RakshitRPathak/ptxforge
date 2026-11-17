@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Fake nvcc: -ptx writes PTX-looking text, -cubin writes a fake cubin. Logs each call.
+out=""; kind=""
+while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift;; -ptx) kind=ptx;; -cubin) kind=cubin;; esac; shift; done
+echo "$kind" >> "${FAKE_NVCC_LOG:-/dev/null}"
+if [ "$kind" = ptx ]; then printf '.version 9.2\n.target sm_120\n.entry gemm_bias_gelu() {}\n' > "$out"; else printf 'FAKECUBIN' > "$out"; fi

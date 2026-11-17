@@ -32,6 +32,7 @@ Lowers `GEMM + bias + GELU` from `linalg` to NVIDIA PTX with custom C++ passes a
 | External/LLM advisor protocol (C++ side, validation guard) | ✅ **tested** with a fake advisor script; `scripts/llm_propose.py` (the actual API call) |
 | Studio (`studio/index.html`) | ✅ **rendered in headless Chromium** with a C++-produced trace, no console errors |
 | `CudaRunner` (`core/src/cuda_runner.cpp`: nvcc→PTX, `cuModuleLoadData`, correctness gate, event timing, cuBLAS) | ✅ **built and run on a Tesla T4** (Colab), including the cuBLAS baseline |
+| `CudaRunner` with a driver older than the toolkit (cannot JIT newer PTX) | ✅ falls back to `nvcc -cubin` automatically; tested against a fake driver in CI (`make cuda-fallback-test`), see DEVLOG 2026-11-17 |
 | CUDA kernel (`kernels/gemm_bias_gelu.cu`) | ✅ **built with nvcc and measured on a T4**: see Results |
 | MLIR passes + `ptxforge-opt` + CMake/TableGen | ✅ **built against LLVM/MLIR 19** (Ubuntu's prebuilt packages); 4 passes: `fuse-epilogue`, `pad-workgroup-memory`, `approximate-math`, `erase-self-copies` |
 | FileCheck tests (`compiler/test/*.mlir`) | ✅ **7 cases pass** under `lit`, including negative cases; a planted bug in each pass makes its test fail |
@@ -40,7 +41,7 @@ Lowers `GEMM + bias + GELU` from `linalg` to NVIDIA PTX with custom C++ passes a
 | MLIR-generated PTX on a GPU | ⚠️ **not yet run**: `scripts/run_ptx_on_gpu.py` checks and times `kernels/generated/gemm_bias_gelu_2048_sm75.ptx` on a Colab T4 |
 | Shared-memory tiles in the MLIR path | ⚠️ not yet: A/B are read from global memory (through L1/L2), so `pad-workgroup-memory` has nothing to pad in this pipeline yet (milestone M2) |
 | Measured GPU results | ✅ one 40-trial tuning run on a T4 for the `nvcc` backend (see Results); advisor ablation on real hardware not yet run |
-| Second GPU architecture: RTX 5050 Laptop (Blackwell, `sm_120`) | ◐ profile `--gpu rtx5050` is in the tuner and the Python reference and passes the parity check; `scripts/rtx5050_run.sh` does the whole run. ⚠️ **No measured run yet** |
+| Second GPU architecture: RTX 5050 Laptop (Blackwell, `sm_120`) | ◐ profile `--gpu rtx5050` is in the tuner and the Python reference and passes the parity check; `scripts/rtx5050_run.sh` does the whole run. ⚠️ **No measured numbers yet**: the first attempt failed at module load because the driver was older than the toolkit (fixed, see DEVLOG) |
 
 ⚠️ = not done yet, as described. The shipped kernel is FP32 SGEMM; FP16 tensor cores are milestone M3. Every number in Results comes from a measured trace (`source: harness`), never from the simulator.
 

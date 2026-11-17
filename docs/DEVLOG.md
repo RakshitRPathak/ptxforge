@@ -51,3 +51,22 @@ Toolchain: Ubuntu 24.04's `llvm-19-dev`, `libmlir-19-dev`, `mlir-19-tools`, `cla
 Checked: `tests/check_lowering_cpu.py` runs the same schedule minus GPU mapping on the CPU and matches fp64 NumPy to
 about 1e-6 for 3 sizes and 4 tile shapes; a 0.6% change to one GELU constant makes it fail. PTX is generated for
 5 tile configs. Not checked here: running the PTX on a GPU (`scripts/run_ptx_on_gpu.py` on a Colab T4).
+
+## 2026-11-17: first run on an RTX 5050 Laptop GPU (Blackwell, sm_120): zero trials ran
+
+**Expected** the 40-trial tune to produce numbers. **Saw** all 45 trials (smoke test and tune) fail at
+`cuModuleLoadData` with "the provided PTX was compiled with an unsupported toolchain"
+(`CUDA_ERROR_UNSUPPORTED_PTX_VERSION`), before the correctness gate and before any timing. **Because** the laptop's
+NVIDIA driver supports CUDA 13.1 while `nvcc` in WSL emits PTX for a newer ISA version. A driver can only JIT PTX
+whose version it knows. SASS is different: CUDA's minor version compatibility lets a 13.1 driver run a cubin built
+by any 13.x toolkit. The T4 never hit this because Colab's driver was newer than its toolkit.
+
+**Fix:** `CudaRunner` still generates and first tries the PTX (the studio shows it, and JIT is the normal path). On
+`CUDA_ERROR_UNSUPPORTED_PTX_VERSION` it switches, once, to `nvcc -cubin` for the same config and says so on stderr.
+Kernel source, flags and timing method are unchanged. A toolkit with a newer *major* version than the driver still
+fails; the error then names the driver version.
+
+**Checked without a GPU:** `tests/fake_cuda/` compiles the real runner against NVIDIA's headers and a fake driver
+that rejects PTX the same way and computes the kernel on the CPU. With the fix, all trials pass the correctness gate
+through cubins and the notice prints once; with the old code it reproduces the laptop failure exactly (0 of 6
+trials). CI runs it (`make cuda-fallback-test`). **Not checked:** a real run on the laptop.
