@@ -5,7 +5,7 @@
 **An MLIR/LLVM GPU kernel compiler, a measurement-driven autotuner, and a roofline studio.**
 Lowers `GEMM + bias + GELU` from `linalg` to NVIDIA PTX with custom C++ passes and a generated transform schedule, a C++20 closed-loop tuner (`ptxforge-tune`) with an in-process CUDA Driver API runner, whose "AI advisor" is *ablated against honest baselines* instead of assumed to help.
 
-**Measured on two GPU architectures** (see [Results](#results)): the tuned kernel reaches **85.6% of cuBLAS on a Tesla T4** (Turing) and **79.3% on a GeForce RTX 5050 Laptop GPU** (Blackwell); the MLIR-generated kernel runs correctly on the RTX 5050 at 3,008 GFLOP/s, and the compiler now stages its A/B tiles in shared memory (that kernel is built and checked on CPU, not yet timed on a GPU). On both GPUs the original cost model mis-ranked near-optimal configs (ρ = −0.67 and −0.37), which is why the tuner measures every candidate; a revised model that counts shared-memory issue cycles and exposed load latency ranks the recorded RTX 5050 run at ρ = +0.75 (in-sample, see below).
+**Measured on two GPU architectures** (see [Results](#results)): the tuned kernel reaches **85.6% of cuBLAS on a Tesla T4** (Turing) and **79.3% on a GeForce RTX 5050 Laptop GPU** (Blackwell); the MLIR-generated kernel runs correctly on the RTX 5050 at about 32% of cuBLAS, and staging its A/B tiles in shared memory did not change that at the default tile size (see below). On both GPUs the original cost model mis-ranked near-optimal configs (ρ = −0.67 and −0.37), which is why the tuner measures every candidate; a revised model that counts shared-memory issue cycles and exposed load latency ranks the recorded RTX 5050 run at ρ = +0.75 (in-sample, see below).
 
 ---
 
@@ -41,7 +41,7 @@ Lowers `GEMM + bias + GELU` from `linalg` to NVIDIA PTX with custom C++ passes a
 | `scripts/lower_to_ptx.sh` + `schedule_template.mlir` | ✅ **run end to end**: linalg → fused, tiled, vectorized kernel → PTX for `sm_75`, for 5 tile configs, in about 0.2 s, with no CUDA toolkit or libdevice |
 | Numerical check of the MLIR lowering | ✅ **on CPU**: the same schedule minus GPU mapping, compiled with LLVM, matches an fp64 NumPy reference (max error about 1e-6) at 3 sizes and 4 tile shapes (`tests/check_lowering_cpu.py`) |
 | MLIR-generated PTX on a GPU | ✅ **run on an RTX 5050 Laptop GPU**: correct at 3,008 GFLOP/s (31.6% of cuBLAS), see Results. The first attempt produced NaN because outlining had reordered the kernel's parameters; fixed by `ptxforge-order-kernel-args` (DEVLOG). Not yet run on a T4 |
-| Shared-memory tiles in the MLIR path | ✅ **built, checked on CPU, not yet timed on a GPU**: each K step copies A and B tiles into padded shared memory with float4 stores, two barriers, accumulator in registers (see [The MLIR compiler path](#the-mlir-compiler-path)) |
+| Shared-memory tiles in the MLIR path | ✅ **built and run on the RTX 5050**: correct, 32.2% of same-run cuBLAS vs 31.6% without staging at 64×64×16, i.e. no real gain at that tile size; a sweep over larger tiles is ready (`scripts/mlir_sweep.sh`), not yet run |
 | Measured GPU results | ✅ 40-trial tuning runs on a T4 and an RTX 5050 Laptop GPU for the `nvcc` backend (see Results); advisor ablation on real hardware not yet run |
 | Second GPU architecture: RTX 5050 Laptop (Blackwell, `sm_120`) | ✅ **40-trial tune measured**: best 7,547 GFLOP/s, 79.3% of cuBLAS, ρ = −0.37 (see Results); `--gpu rtx5050`, `scripts/rtx5050_run.sh` |
 
@@ -131,12 +131,19 @@ Two caveats on these numbers:
 **The MLIR-generated kernel on the same GPU** ([`runs/mlir_rtx5050.json`](runs/mlir_rtx5050.json)): correct (max abs
 error 4.9e-6, every output written) at **3,008 GFLOP/s**, 31.6% of cuBLAS SGEMM and 40% of the tuned `nvcc` kernel. It
 is also slower than cuBLAS followed by a separate bias + GELU pass (5.71 ms vs 2.75 ms), so fusion doesn't pay off
-yet. That is expected for this schedule: it doesn't stage A and B tiles in shared memory, so every thread re-reads
-global memory. Its first run on this GPU produced NaN; the cause (kernel parameters in the wrong order) is fixed and
+yet. I put that down to the schedule not staging A and B in shared memory; the staged version below shows that was
+not the reason, at least at this tile size. Its first run on this GPU produced NaN; the cause (kernel parameters in the wrong order) is fixed and
 described in DEVLOG. The schedule has since been changed to stage A and B in shared memory (next section); that
-kernel has not been timed yet.
+kernel is correct on the RTX 5050 (max abs error 4.9e-6, [`runs/mlir_rtx5050_smem.json`](runs/mlir_rtx5050_smem.json))
+but not faster: **2,109 GFLOP/s against 6,557 for cuBLAS in the same run, 32.2%**, where the previous schedule managed
+31.6%. The absolute numbers are lower than the first run because cuBLAS itself was 31% slower that evening (the
+laptop was evidently in a lower power state; its 6.6 TFLOP/s matches cuda-gpu-bench's earlier runs, which supports the
+power-mode explanation above). The likeliest reason staging gained nothing: this tile is small (64×64×16, 4×4 per
+thread), and Blackwell's large L1 was already catching the global re-reads it removes; cuda-gpu-bench found shared-memory
+tiling worth only 1.27× on this GPU against 1.53× on a T4. `scripts/mlir_sweep.sh` times five tile configs (up to the
+tuned `nvcc` kernel's 128×64×32, 8×4) with and without staging, to see whether it pays off at larger tiles.
 
-Next experiments: time the shared-memory MLIR kernel on the RTX 5050; a new tuning run with the revised model (its
+Next experiments: the staged-vs-unstaged sweep over tile sizes (`scripts/mlir_sweep.sh`); a new tuning run with the revised model (its
 first out-of-sample ρ) plus ρ on a random sample of configs, on both GPUs; the `none / random / rules / kg` advisor
 ablation with `--runner cuda`; double buffering in the MLIR schedule.
 
@@ -168,7 +175,8 @@ git clone https://github.com/RakshitRPathak/ptxforge && cd ptxforge
 python3 scripts/run_ptx_on_gpu.py --json runs/mlir_t4.json
 ```
 It checks the output against an fp64 reference, then times the kernel against cuBLAS SGEMM and against cuBLAS + a separate bias/GELU pass.
-The previous schedule (no shared memory) ran at 3,008 GFLOP/s on the RTX 5050; the shared-memory one has not been timed yet.
+On the RTX 5050 both schedules reach about 32% of cuBLAS at the default 64×64×16 tile; `bash scripts/mlir_sweep.sh`
+compares them at five tile sizes.
 
 ---
 
