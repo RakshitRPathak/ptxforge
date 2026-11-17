@@ -38,10 +38,10 @@ Lowers `GEMM + bias + GELU` from `linalg` to NVIDIA PTX with custom C++ passes a
 | FileCheck tests (`compiler/test/*.mlir`) | ✅ **7 cases pass** under `lit`, including negative cases; a planted bug in each pass makes its test fail |
 | `scripts/lower_to_ptx.sh` + `schedule_template.mlir` | ✅ **run end to end**: linalg → fused, tiled, vectorized kernel → PTX for `sm_75`, for 5 tile configs, in about 0.2 s, with no CUDA toolkit or libdevice |
 | Numerical check of the MLIR lowering | ✅ **on CPU**: the same schedule minus GPU mapping, compiled with LLVM, matches an fp64 NumPy reference (max error about 1e-6) at 3 sizes and 4 tile shapes (`tests/check_lowering_cpu.py`) |
-| MLIR-generated PTX on a GPU | ⚠️ first run (RTX 5050, 2026-11-17) **failed the correctness gate**: outlining had put the kernel's parameters in the order (C, A, B, bias), so the runner's (A, B, bias, C) call fed it the wrong buffers. Fixed with `ptxforge-order-kernel-args` plus an ABI guard in `lower_to_ptx.sh` (DEVLOG); not yet rerun. `scripts/run_ptx_on_gpu.py` checks and times `kernels/generated/gemm_bias_gelu_2048_sm75.ptx` |
+| MLIR-generated PTX on a GPU | ✅ **run on an RTX 5050 Laptop GPU**: correct at 3,008 GFLOP/s (31.6% of cuBLAS), see Results. The first attempt produced NaN because outlining had reordered the kernel's parameters; fixed by `ptxforge-order-kernel-args` (DEVLOG). Not yet run on a T4 |
 | Shared-memory tiles in the MLIR path | ⚠️ not yet: A/B are read from global memory (through L1/L2), so `pad-workgroup-memory` has nothing to pad in this pipeline yet (milestone M2) |
-| Measured GPU results | ✅ one 40-trial tuning run on a T4 for the `nvcc` backend (see Results); advisor ablation on real hardware not yet run |
-| Second GPU architecture: RTX 5050 Laptop (Blackwell, `sm_120`) | ◐ profile `--gpu rtx5050` is in the tuner and the Python reference and passes the parity check; `scripts/rtx5050_run.sh` does the whole run. ⚠️ **No measured numbers yet**: the first attempt failed at module load because the driver was older than the toolkit (fixed, see DEVLOG) |
+| Measured GPU results | ✅ 40-trial tuning runs on a T4 and an RTX 5050 Laptop GPU for the `nvcc` backend (see Results); advisor ablation on real hardware not yet run |
+| Second GPU architecture: RTX 5050 Laptop (Blackwell, `sm_120`) | ✅ **40-trial tune measured**: best 7,547 GFLOP/s, 79.3% of cuBLAS, ρ = −0.37 (see Results); `--gpu rtx5050`, `scripts/rtx5050_run.sh` |
 
 ⚠️ = not done yet, as described. The shipped kernel is FP32 SGEMM; FP16 tensor cores are milestone M3. Every number in Results comes from a measured trace (`source: harness`), never from the simulator.
 
@@ -64,7 +64,59 @@ GFLOP/s counts only the 2·M·N·K GEMM FLOPs. cuBLAS runs a plain SGEMM while P
 - The 40 trials are not a random sample. The search concentrates on configs the prior already rates highly, so this shows the model cannot order *near-optimal* configs on a T4, not that it is wrong across the whole space.
 - It is still the key result. The tuner reached 85.6% of cuBLAS because it times every candidate and keeps the measured best, not because the model's ranking was right. That is the case for closed-loop measurement over a static cost model.
 
-Next experiments: rank correlation on a random sample of configs (to measure the model globally), the `none / random / rules / kg` advisor ablation with `--runner cuda`, and finding which roofline term (occupancy, register cap, wave quantization) causes the inversion.
+### Second architecture: GeForce RTX 5050 Laptop GPU (Blackwell, `sm_120`)
+
+**Same problem, same 40-trial `kg` search, run on 17 November 2026** under WSL2 with the laptop plugged in and in its
+performance power mode (`scripts/rtx5050_run.sh`). All 40 candidates passed the correctness gate (max error 4.2e-6).
+Traces: [`runs/rtx5050_2048.json`](runs/rtx5050_2048.json), studio page [`studio/rtx5050.html`](studio/rtx5050.html).
+
+| | GFLOP/s | |
+|---|---:|---|
+| Untuned default config (64×64×8, 4×4 per thread) | 5,026.3 | baseline |
+| Best config found (128×64×32, 8×4 per thread, pad 2) | **7,546.6** | **1.50×** the default |
+| cuBLAS SGEMM, same shapes, same run | 9,512.1 | best is **79.3%** of cuBLAS |
+
+**The cost model mis-ranked configs again: Spearman ρ = −0.37** (T4: −0.67), so the inversion is not a T4 quirk. This
+run shows two places where it goes wrong. The model gives the same prediction (4,946 GFLOP/s) to all eight 128×64
+configs that differ only in BK and per-thread tile shape, while they measured anywhere from 3,446 to 7,245:
+
+| 128×64 tile | BK 4 | BK 8 | BK 16 | BK 32 |
+|---|---:|---:|---:|---:|
+| 4×8 per thread | 4,149 | 3,446 | 5,089 | 5,305 |
+| 8×4 per thread | 4,701 | 3,758 | 6,615 | 7,245 |
+
+- **Per-thread tile orientation matters and the model can't see it:** 8×4 beat 4×8 at every BK, by 9–37%. Both do
+  32 FMAs per thread per K step and differ in how each thread reads its A and B fragments from shared memory. The
+  model's bank-conflict term scores the two shapes the same (A reads 1-way, B reads 2-way), and its intensity and
+  occupancy terms are identical too, so it predicts the same number for both.
+- **Deeper K tiles helped on Blackwell,** BK 32 being best in both rows, which the model's arithmetic-intensity term
+  doesn't separate either.
+
+Between them the two architectures give the cost model's next fix a concrete target: make the shared-memory read
+model distinguish per-thread tile shapes (and K depth), then re-measure the rank correlation on a random sample of configs.
+
+Two caveats on these numbers:
+
+- **cuBLAS measured 9.5 TFLOP/s here**, in both the tuner (cuBLAS C API) and the CuPy script, against 6.7–6.9 in
+  [cuda-gpu-bench](https://github.com/RakshitRPathak/cuda-gpu-bench)'s earlier runs on the same laptop. The likeliest
+  difference is the power mode (laptop GPUs follow the power limit), but that is not verified. Only same-run ratios
+  (79.3%, 1.50×) are comparable across sessions. The `rtx5050` profile's `sustained` prior (0.50) was set from the
+  lower figure; 9.5 / 13.6 suggests about 0.70.
+- **This almost certainly ran on cubins, not the driver's PTX JIT.** The laptop's driver refused the toolkit's PTX in
+  the two earlier attempts that day, so the runner would have switched to `nvcc -cubin` (DEVLOG 2026-11-17); the
+  trace doesn't record which path was taken. Same kernel source and flags; only the step that turns
+  PTX into machine code moved from the driver to `ptxas`.
+
+**The MLIR-generated kernel on the same GPU** ([`runs/mlir_rtx5050.json`](runs/mlir_rtx5050.json)): correct (max abs
+error 4.9e-6, every output written) at **3,008 GFLOP/s**, 31.6% of cuBLAS SGEMM and 40% of the tuned `nvcc` kernel. It
+is also slower than cuBLAS followed by a separate bias + GELU pass (5.71 ms vs 2.75 ms), so fusion doesn't pay off
+yet. That is expected for this schedule: it doesn't stage A and B tiles in shared memory, so every thread re-reads
+global memory. Its first run on this GPU produced NaN; the cause (kernel parameters in the wrong order) is fixed and
+described in DEVLOG.
+
+Next experiments: rank correlation on a random sample of configs, on both GPUs; the `none / random / rules / kg` advisor
+ablation with `--runner cuda`; a shared-memory read model that separates per-thread tile shapes; and shared-memory staging in the MLIR
+schedule.
 
 ---
 

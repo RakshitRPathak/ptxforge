@@ -93,3 +93,20 @@ many output elements were left unwritten.
 **Checked:** FileCheck test `order-kernel-args.mlir` (fails on unpassed IR); decoding the new PTX shows parameter 3 is
 stored to, parameter 2 is read 4 times per thread (bias) and parameters 0 and 1 carry the 64 GEMM loads each. CPU
 numerical checks unchanged. **Not checked:** the rerun on the GPU.
+
+## 2026-11-17: second architecture measured (RTX 5050 Laptop, Blackwell)
+
+After the two fixes above, the full run worked: 40 of 40 candidates passed the correctness gate, best 7,546.6 GFLOP/s
+(1.50× the default, 79.3% of cuBLAS), and the MLIR-generated kernel passed at 3,008 GFLOP/s.
+
+**Expected** the cost model to rank better on a second GPU, or at least differently. **Saw** ρ = −0.37, inverted again.
+The trace shows where: the model gives one prediction (4,946) to eight 128×64 configs that measured 3,446–7,245. The
+8×4 per-thread tile beat 4×8 at every BK (9–37%), and BK 32 was best in both shapes. The model gives all eight the
+same bank-conflict degrees (A-tile store 1, A reads 1, B reads 2), the same intensity (20.9 FLOP/B) and the same
+occupancy (0.5), so nothing in it can separate them. **Next:** make the bank model depend on the per-thread tile shape
+and add a K-depth term; measure ρ on a random sample.
+
+**Expected** cuBLAS near the 6.7–6.9 TFLOP/s cuda-gpu-bench measured on this laptop. **Saw** 9.5 TFLOP/s, in both the
+C++ runner and the CuPy script. Unverified explanation: power mode (this run was plugged in, performance mode). The
+`sustained` prior of 0.50 came from the lower figure. Left unchanged so this trace stays reproducible; worth
+re-measuring cuda-gpu-bench in the same power mode before changing it.
