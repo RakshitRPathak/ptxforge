@@ -186,3 +186,20 @@ moved from 9,529 to 6,557 GFLOP/s with the laptop's power state.
 
 **Rule from now on:** attribute a GPU result to a kernel only after checking the PTX that ran (`grep -c ld.shared`, or
 its hash) and the commit it came from.
+
+## 2026-11-17: shared memory pays 1.3–1.9× (the real measurement)
+
+`scripts/mlir_sweep.sh` on the RTX 5050, plugged in (cuBLAS at 9.5 TFLOP/s throughout), after it had checked that the five
+staged kernels have shared loads, the five unstaged ones none, and the checkout was current. All ten correct; grids
+match their tile configs; the unstaged default reproduced the first run (2,999 vs 3,008 GFLOP/s).
+
+**Expected** staging to help, perhaps less on Blackwell than on a T4 because of its large L1 (cuda-gpu-bench saw
+hand-written tiling worth only 1.27× here). **Saw** 1.78× at the default tile and 1.3–1.9× everywhere, best 68.3% of
+cuBLAS at 128×64×32 with 8×4 per thread, the same config that won the `nvcc` kernel's tuning run. A plausible reason this
+kernel gains more than cuda-gpu-bench's tiled one did: that one used small tiles and scalar shared loads; this one reads
+every operand as float4 from padded tiles.
+
+The fused kernel is now faster than cuBLAS + a separate bias + GELU pass (2.64 vs 2.76 ms); unstaged it took 4.52 ms.
+
+**Not separated:** staging vs padding (the pass changes 64×16 / 16×64 to 64×20 / 16×68). **Open:** the copies' global loads
+are scalar (`ld.global.f32` ×4 per float4) because nothing tells LLVM the kernel pointers are 16-byte aligned.
