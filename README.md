@@ -5,6 +5,8 @@
 **An MLIR/LLVM GPU kernel compiler, a measurement-driven autotuner, and a roofline studio.**
 Lowers `GEMM + bias + GELU` from `linalg` to NVIDIA PTX with custom C++ passes and a generated transform schedule, a C++20 closed-loop tuner (`ptxforge-tune`) with an in-process CUDA Driver API runner, whose "AI advisor" is *ablated against honest baselines* instead of assumed to help.
 
+**Measured on two GPU architectures** (see [Results](#results)): the tuned kernel reaches **85.6% of cuBLAS on a Tesla T4** (Turing) and **79.3% on a GeForce RTX 5050 Laptop GPU** (Blackwell); the MLIR-generated kernel runs correctly on the RTX 5050 at 3,008 GFLOP/s. On both GPUs the cost model mis-ranks near-optimal configs (ρ = −0.67 and −0.37), which is why the tuner measures every candidate.
+
 ---
 
 ## Design decisions
@@ -12,7 +14,7 @@ Lowers `GEMM + bias + GELU` from `linalg` to NVIDIA PTX with custom C++ passes a
 | Alternative | Chosen design | Why |
 | --- | --- | --- |
 | MLIR pipeline is the only path | **Two backends behind one interface:** `nvcc-ptx` (day 1) and `mlir` (the real thing) | This gives a working loop, real GPU numbers and a studio in week 1 instead of blocking on an LLVM build. The nvcc kernel then becomes the **oracle** the MLIR output must approach. |
-| Three custom passes incl. "NVVM→PTX lowering" | **Two custom optimization passes** (`fuse-epilogue`, `pad-workgroup-memory`) built *on top of* upstream patterns, two small legalization passes (`approximate-math`, `erase-self-copies`), and a **transform-dialect schedule** for tiling | NVVM→PTX lowering already exists upstream; re-implementing it is not a defensible contribution. Using `populateElementwiseOpsFusionPatterns` with a custom control function, and driving tiling from a generated schedule, is how real MLIR projects work. |
+| Three custom passes incl. "NVVM→PTX lowering" | **Two custom optimization passes** (`fuse-epilogue`, `pad-workgroup-memory`) built *on top of* upstream patterns, three small legalization passes (`approximate-math`, `erase-self-copies`, `order-kernel-args`), and a **transform-dialect schedule** for tiling | NVVM→PTX lowering already exists upstream; re-implementing it is not a defensible contribution. Using `populateElementwiseOpsFusionPatterns` with a custom control function, and driving tiling from a generated schedule, is how real MLIR projects work. |
 | Recompile passes per tuning trial | Tuner **renders a transform schedule** (`scripts/schedule_template.mlir`) per config | New tile sizes need no C++ rebuild → trials are seconds. |
 | "GraphRAG agent finds the optimum" | Analytic **cost model + roofline prior**, neighbor hill-climb, and advisors `none / random / rules / kg / llm` that are **compared in an ablation** | An LLM in the loop is a hypothesis, not a result. Here it is *tested*. The LLM can only suggest; invalid/hallucinated configs are rejected in code, and every suggestion is benchmarked. |
 | CUPTI counters from the start | **Driver-API attributes first** (regs, spill bytes, occupancy, blocks/SM, correctness, GFLOP/s, cuBLAS baseline); CUPTI/ncu in milestone M4 | Works on a free Colab T4 where hardware counters are often blocked. |
@@ -34,8 +36,8 @@ Lowers `GEMM + bias + GELU` from `linalg` to NVIDIA PTX with custom C++ passes a
 | `CudaRunner` (`core/src/cuda_runner.cpp`: nvcc→PTX, `cuModuleLoadData`, correctness gate, event timing, cuBLAS) | ✅ **built and run on a Tesla T4** (Colab), including the cuBLAS baseline |
 | `CudaRunner` with a driver older than the toolkit (cannot JIT newer PTX) | ✅ falls back to `nvcc -cubin` automatically; tested against a fake driver in CI (`make cuda-fallback-test`), see DEVLOG 2026-11-17 |
 | CUDA kernel (`kernels/gemm_bias_gelu.cu`) | ✅ **built with nvcc and measured on a T4**: see Results |
-| MLIR passes + `ptxforge-opt` + CMake/TableGen | ✅ **built against LLVM/MLIR 19** (Ubuntu's prebuilt packages); 4 passes: `fuse-epilogue`, `pad-workgroup-memory`, `approximate-math`, `erase-self-copies` |
-| FileCheck tests (`compiler/test/*.mlir`) | ✅ **7 cases pass** under `lit`, including negative cases; a planted bug in each pass makes its test fail |
+| MLIR passes + `ptxforge-opt` + CMake/TableGen | ✅ **built against LLVM/MLIR 19** (Ubuntu's prebuilt packages); 5 passes: `fuse-epilogue`, `pad-workgroup-memory`, `approximate-math`, `erase-self-copies`, `order-kernel-args` |
+| FileCheck tests (`compiler/test/*.mlir`) | ✅ **10 cases pass** under `lit`, including negative cases; a planted bug in each pass (or, for `order-kernel-args`, running without it) makes its test fail |
 | `scripts/lower_to_ptx.sh` + `schedule_template.mlir` | ✅ **run end to end**: linalg → fused, tiled, vectorized kernel → PTX for `sm_75`, for 5 tile configs, in about 0.2 s, with no CUDA toolkit or libdevice |
 | Numerical check of the MLIR lowering | ✅ **on CPU**: the same schedule minus GPU mapping, compiled with LLVM, matches an fp64 NumPy reference (max error about 1e-6) at 3 sizes and 4 tile shapes (`tests/check_lowering_cpu.py`) |
 | MLIR-generated PTX on a GPU | ✅ **run on an RTX 5050 Laptop GPU**: correct at 3,008 GFLOP/s (31.6% of cuBLAS), see Results. The first attempt produced NaN because outlining had reordered the kernel's parameters; fixed by `ptxforge-order-kernel-args` (DEVLOG). Not yet run on a T4 |
@@ -130,7 +132,7 @@ schedule.
 | 2 | Tile to 64×64 per thread block and 4×4 per thread, pull the matmul and its zero-fill into both loops, step K by 16, vectorize each thread's work, bufferize so the result is written straight into `C`, map the loops to `gpu.launch` | transform schedule rendered by `ptxforge-tune schedule` |
 | 3 | Drop the no-op tile copies bufferization leaves behind; replace `tanh` and `fabs` with arith ops so no libdevice is needed; unroll vectors | `ptxforge-erase-self-copies`, `ptxforge-approximate-math` (custom) |
 | 4 | Pad 2-D shared-memory buffers to avoid bank conflicts (no-op until tiles are staged in shared memory) | `ptxforge-pad-workgroup-memory` (custom) |
-| 5–6 | Outline the kernel, lower to NVVM, emit PTX with LLVM's NVPTX backend, extract it | upstream `gpu-lower-to-nvvm-pipeline` |
+| 5–6 | Outline the kernel and put its parameters back in the source order (outlining orders them by first use); lower to NVVM, emit PTX with LLVM's NVPTX backend, extract it. The script fails if the final launch is out of order | upstream `gpu-kernel-outlining`, `ptxforge-order-kernel-args` (custom), upstream `gpu-lower-to-nvvm-pipeline` |
 
 The result (`kernels/generated/gemm_bias_gelu_2048_sm75.ptx`) is one kernel taking four pointers in the source order (A, B, bias, C), 16×16 threads per block,
 with each thread's 4×4 accumulator in registers (no local memory) and each K step fully unrolled into 256 FMAs. CI regenerates it and fails if the
