@@ -1,4 +1,4 @@
-// cost_model.hpp — analytic roofline + occupancy + register-cap + bank-conflict + tail model.
+// cost_model.hpp — analytic roofline + occupancy + register-cap + issue-rate + latency + tail model.
 //
 // This is a PRIOR used to rank/prune configs and place points on the roofline. It is not
 // ground truth; the trace labels every value from it as `modeled`, and the search re-measures
@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "PtxForge/BankModel.h"
 #include "ptxforge/hw.hpp"
@@ -37,6 +39,68 @@ inline KernelBank kernel_bank_degrees(const Config &c) {
   return k;
 }
 
+// Fixed exposed latency of one K step's global loads, in cycles. The kernel has no double buffering, so
+// each block waits about one DRAM round trip per K step; other resident blocks hide it if they have
+// enough FMAs queued. Set from typical global-memory latency on recent GPUs, not fitted to a trace.
+inline constexpr double kLoadLatencyCycles = 600.0;
+
+// FP32 lanes per SM: 64 on Pascal, Volta, Turing and A100; 128 on GA10x, Ada, Hopper and Blackwell.
+inline int fp32_lanes_per_sm(const std::string &arch) {
+  return (arch == "sm_86" || arch == "sm_87" || arch == "sm_89" || arch == "sm_90" || arch == "sm_100" ||
+          arch == "sm_120")
+             ? 128
+             : 64;
+}
+
+// Issue-rate model of one K step, per warp, for kernels/gemm_bias_gelu.cu. Each k does TM x TN FMAs and
+// reads TM floats of As and TN floats of Bs. The SM issues lanes/32 warp-FMAs per cycle; the shared pipe
+// serves one 128-byte phase per cycle, times the bank-conflict degree inside the phase. The reads are
+// consecutive floats, so ptxas issues them as the widest vector their alignment allows (float4 when the
+// count and the row length are multiples of 4, float2 for multiples of 2): a float4 warp load takes
+// 4 phases of 8 lanes. Costing every load instruction this way, instead of taking the worst scalar
+// pattern, is what separates micro-tile shapes that the old model scored identically.
+struct SmemPipe {
+  int vec_A = 1, vec_B = 1;      // floats per shared load instruction
+  int cyc_A = 0, cyc_B = 0;      // shared-pipe cycles for one k's A / B loads
+  double lds_cycles = 0, sts_cycles = 0, fma_cycles = 0;
+  double factor() const { return fma_cycles / std::max(fma_cycles, lds_cycles + sts_cycles); }
+};
+
+// Widest vector (4, 2 or 1 floats) for `count` consecutive floats at a multiple of `count` in rows of
+// `row` floats.
+inline int vector_width(int count, int row) {
+  for (int w : {4, 2})
+    if (count % w == 0 && row % w == 0) return w;
+  return 1;
+}
+
+// Shared-pipe cycles for one warp load: phases x worst conflict degree within a phase.
+inline int warp_load_cycles(const std::vector<int64_t> &byteAddrs, int vec) {
+  const int bytes = 4 * vec, phases = std::max(1, kWarpSize * bytes / (kNumBanks * kBankBytes));
+  return phases * conflictDegree(byteAddrs, bytes);
+}
+
+inline SmemPipe smem_pipe(const Config &c, int lanes) {
+  const int tx_n = c.BN / c.TN, threads = c.threads();
+  SmemPipe s;
+  s.vec_A = vector_width(c.TM, c.BM + c.PAD);
+  s.vec_B = vector_width(c.TN, c.BN);
+  std::vector<int64_t> addr(kWarpSize);
+  for (int i = 0; i < c.TM; i += s.vec_A) {
+    for (int lane = 0; lane < kWarpSize; ++lane) addr[static_cast<size_t>(lane)] = ((lane / tx_n) * c.TM + i) * 4;
+    s.cyc_A += warp_load_cycles(addr, s.vec_A);
+  }
+  for (int j = 0; j < c.TN; j += s.vec_B) {
+    for (int lane = 0; lane < kWarpSize; ++lane) addr[static_cast<size_t>(lane)] = ((lane % tx_n) * c.TN + j) * 4;
+    s.cyc_B += warp_load_cycles(addr, s.vec_B);
+  }
+  s.lds_cycles = static_cast<double>(c.BK) * (s.cyc_A + s.cyc_B);
+  const int stores_A = (c.BM * c.BK + threads - 1) / threads, stores_B = (c.BK * c.BN + threads - 1) / threads;
+  s.sts_cycles = static_cast<double>(stores_A) * transposedStoreDegree(c.BK, c.BM, c.PAD, 4) + stores_B;
+  s.fma_cycles = static_cast<double>(c.BK) * c.TM * c.TN / (lanes / 32.0);
+  return s;
+}
+
 // Counters from a (simulated or real) run. Fields are optional: a real run without CUPTI has no
 // bank-conflict counter, and that must not silently become "0".
 struct Profile {
@@ -62,7 +126,8 @@ struct Analysis {
   KernelBank bank;
   int bank_degree;
   long grid_blocks;
-  double waves, f_occ, f_ilp, f_bank, f_spill, f_fill, predicted_gflops;
+  SmemPipe pipe;
+  double waves, f_occ, f_pipe, f_lat, f_spill, f_fill, predicted_gflops;
 
   json::Value to_json() const {
     auto r4 = [](double x) { return std::round(x * 1e4) / 1e4; };
@@ -74,7 +139,7 @@ struct Analysis {
         .set("memory_bound", memory_bound).set("regs_est", regs_est).set("reg_cap", reg_cap)
         .set("spill_regs", spill_regs).set("blocks_per_sm", blocks_per_sm).set("occupancy", r4(occupancy))
         .set("bank", b).set("bank_degree", bank_degree).set("grid_blocks", grid_blocks)
-        .set("waves", r4(waves)).set("f_occ", r4(f_occ)).set("f_ilp", r4(f_ilp)).set("f_bank", r4(f_bank))
+        .set("waves", r4(waves)).set("f_occ", r4(f_occ)).set("f_pipe", r4(f_pipe)).set("f_lat", r4(f_lat))
         .set("f_spill", r4(f_spill)).set("f_fill", r4(f_fill)).set("predicted_gflops", r4(predicted_gflops));
     return o;
   }
@@ -117,11 +182,18 @@ inline Analysis analyze(const Config &c, const Problem &p, const GPU &hw) {
   a.f_fill = a.waves > 0 ? std::max(0.3, a.waves / std::ceil(a.waves)) : 0.3;
 
   a.f_occ = a.blocks_per_sm > 0 ? std::pow(std::min(1.0, a.occupancy / 0.5), 0.5) : 0.0;
-  a.f_ilp = static_cast<double>(c.TM * c.TN) / (c.TM * c.TN + 0.5 * (c.TM + c.TN));
-  a.f_bank = 1.0 / (1.0 + 0.1 * a.bank.extra());
+  // Issue rate: FMA pipe vs shared-memory pipe (see SmemPipe).
+  const int lanes = fp32_lanes_per_sm(hw.arch);
+  a.pipe = smem_pipe(c, lanes);
+  a.f_pipe = a.pipe.factor();
+  // Latency: B resident blocks, each with C cycles of FMA work per K step, overlap one exposed load
+  // latency L: busy fraction B*C / (B*C + L). Deeper BK means more work per wait.
+  const double work = static_cast<double>(threads) * c.BK * c.TM * c.TN / lanes;
+  const double resident = std::max(a.blocks_per_sm, 1);
+  a.f_lat = resident * work / (resident * work + kLoadLatencyCycles);
   a.f_spill = std::exp(-a.spill_regs / 32.0);
 
-  a.predicted_gflops = a.roof_gflops * a.f_occ * a.f_ilp * a.f_bank * a.f_spill * a.f_fill;
+  a.predicted_gflops = a.roof_gflops * a.f_occ * a.f_pipe * a.f_lat * a.f_spill * a.f_fill;
   return a;
 }
 

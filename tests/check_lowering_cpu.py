@@ -39,6 +39,13 @@ def run(cmd, out=None):
         open(out, "w").write(r.stdout)
 
 
+def copy_piece(rows, cols, threads):
+    """Same rule as `ptxforge-tune schedule` (core/src/main.cpp)."""
+    per = max(1, -(-(rows * cols // 4) // threads))
+    r = min(per, rows)
+    return r, 4 * -(-per // r)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--opt", default=os.path.join(ROOT, "build-mlir", "ptxforge-opt"))
@@ -55,20 +62,35 @@ def main():
     open(f"{tmp}/in.mlir", "w").write(src)
 
     sched = open(os.path.join(ROOT, "scripts", "schedule_template.mlir")).read()
-    for k, v in dict(BM=bm, BN=bn, BK=bk, TM=tm, TN=tn, TX=bn // tn, TY=bm // tm).items():
+    threads = (bn // tn) * (bm // tm)
+    (car, cac), (cbr, cbc) = copy_piece(bm, bk, threads), copy_piece(bk, bn, threads)
+    for k, v in dict(BM=bm, BN=bn, BK=bk, TM=tm, TN=tn, TX=bn // tn, TY=bm // tm,
+                     CA_R=car, CA_C=cac, CB_R=cbr, CB_C=cbc).items():
         sched = sched.replace("{{%s}}" % k, str(v))
     # Same schedule, minus the GPU mapping: the block and thread loops stay scf.forall and run serially.
     sched = re.sub(r"\n\s*%launch = transform\.gpu\.map_forall_to_blocks.*?: \(!transform\.any_op\) -> !transform\.any_op", "", sched, flags=re.S)
     sched = re.sub(r"\n\s*transform\.gpu\.map_nested_forall_to_threads.*?: \(!transform\.any_op\) -> !transform\.any_op", "", sched, flags=re.S)
     assert "transform.gpu" not in sched, "failed to strip the GPU mapping from the schedule"
+    # Shared memory has no meaning on the CPU: stage the tiles in ordinary buffers. The loops that copy
+    # them and the loops that read them run one after the other, which is what the barriers guarantee
+    # on the GPU.
+    assert "memory_space = #gpu.address_space<workgroup>" in sched
+    sched = re.sub(r",\s*memory_space = #gpu\.address_space<workgroup>", "", sched)
     open(f"{tmp}/schedule.mlir", "w").write(sched)
 
     opt = a.opt
     run([opt, "--ptxforge-fuse-epilogue", f"{tmp}/in.mlir"], f"{tmp}/01.mlir")
     run([opt, f"--transform-preload-library=transform-library-paths={tmp}/schedule.mlir", "--transform-interpreter",
          "--canonicalize", "--cse", "--ptxforge-erase-self-copies", f"{tmp}/01.mlir"], f"{tmp}/02.mlir")
-    if "memref.copy" in open(f"{tmp}/02.mlir").read() or "linalg.copy" in open(f"{tmp}/02.mlir").read():
-        sys.exit("unexpected copy left after bufferization (the result should be written into C in place)")
+    # The only copies left should be the A/B tiles going into their staging buffers. A copy into an
+    # n-wide matrix would mean the result is not written into C in place.
+    for line in open(f"{tmp}/02.mlir"):
+        if ("memref.copy" in line or "linalg.copy" in line) and f"outs(%" in line and f"strided<[{n}, 1]" in line.split("outs(")[1]:
+            sys.exit(f"unexpected copy into an {n}-wide buffer after bufferization:\n{line.strip()}")
+    staged = open(f"{tmp}/02.mlir").read()
+    for rows, cols in ((bm, bk), (bk, bn)):
+        if f"memref<{rows * cols * 4}xi8>" not in staged or f"to memref<{rows}x{cols}xf32>" not in staged:
+            sys.exit(f"expected a {rows}x{cols} staging buffer for the K step's tile, found none")
     run([opt, "--scf-forall-to-for", "--convert-linalg-to-loops", "--promote-buffers-to-stack=max-alloc-size-in-bytes=1024",
          "--ptxforge-approximate-math", "--canonicalize", "--convert-vector-to-scf=full-unroll=true", "--expand-strided-metadata", "--lower-affine",
          "--convert-scf-to-cf", "--convert-vector-to-llvm", "--finalize-memref-to-llvm", "--convert-math-to-llvm", "--convert-arith-to-llvm",

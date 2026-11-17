@@ -7,6 +7,7 @@
 //   ptxforge-tune gpus
 //   ptxforge-tune schedule --BM 128 --BN 64 --BK 16 --TM 8 --TN 4 --PAD 4 --out build/ir/schedule.mlir
 //   ptxforge-tune bench    --ptx k.ptx --grid 32,32 --block 256 --M 2048 --N 2048 --K 2048   (cuda build only)
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -185,6 +186,18 @@ int cmd_gpus(const Args &) {
   return 0;
 }
 
+// The piece of an R x C tile (C a multiple of 4) that each of `threads` threads copies into shared memory
+// per K step: whole float4s, as few rows as possible, so the copy loop maps onto the block's threads.
+// Same rule in reference/py_tuner/ptxforge_tuner/schedule.py and tests/check_lowering_cpu.py.
+std::pair<int, int> copy_piece(int R, int C, int threads) {
+  if (C % 4) throw std::runtime_error("shared-memory tile width must be a multiple of 4 floats");
+  const int total = R * C / 4, per = std::max(1, (total + threads - 1) / threads);
+  const int r = std::min(per, R), c = 4 * ((per + r - 1) / r);
+  if (R % r || C % c) throw std::runtime_error("cannot split a " + std::to_string(R) + "x" + std::to_string(C) +
+                                               " tile evenly over " + std::to_string(threads) + " threads");
+  return {r, c};
+}
+
 int cmd_schedule(const Args &a) {
   Config c = kDefaultConfig;
   for (Param p : kParams) c = c.with(p, a.geti(param_name(p), c.get(p)));
@@ -192,6 +205,9 @@ int cmd_schedule(const Args &a) {
   json::Value cj = c.to_json();
   // Thread-block shape for map_nested_forall_to_threads: one thread per TM x TN micro-tile.
   cj.set("TX", c.BN / c.TN).set("TY", c.BM / c.TM);
+  const auto [car, cac] = copy_piece(c.BM, c.BK, c.threads());
+  const auto [cbr, cbc] = copy_piece(c.BK, c.BN, c.threads());
+  cj.set("CA_R", car).set("CA_C", cac).set("CB_R", cbr).set("CB_C", cbc);
   for (size_t i = 0; i < cj.keys().size(); ++i) {
     const std::string needle = "{{" + cj.keys()[i] + "}}", val = cj.values()[i].dump();
     for (size_t pos = 0; (pos = text.find(needle, pos)) != std::string::npos; pos += val.size())

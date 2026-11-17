@@ -5,7 +5,7 @@
 **An MLIR/LLVM GPU kernel compiler, a measurement-driven autotuner, and a roofline studio.**
 Lowers `GEMM + bias + GELU` from `linalg` to NVIDIA PTX with custom C++ passes and a generated transform schedule, a C++20 closed-loop tuner (`ptxforge-tune`) with an in-process CUDA Driver API runner, whose "AI advisor" is *ablated against honest baselines* instead of assumed to help.
 
-**Measured on two GPU architectures** (see [Results](#results)): the tuned kernel reaches **85.6% of cuBLAS on a Tesla T4** (Turing) and **79.3% on a GeForce RTX 5050 Laptop GPU** (Blackwell); the MLIR-generated kernel runs correctly on the RTX 5050 at 3,008 GFLOP/s. On both GPUs the cost model mis-ranks near-optimal configs (ρ = −0.67 and −0.37), which is why the tuner measures every candidate.
+**Measured on two GPU architectures** (see [Results](#results)): the tuned kernel reaches **85.6% of cuBLAS on a Tesla T4** (Turing) and **79.3% on a GeForce RTX 5050 Laptop GPU** (Blackwell); the MLIR-generated kernel runs correctly on the RTX 5050 at 3,008 GFLOP/s, and the compiler now stages its A/B tiles in shared memory (that kernel is built and checked on CPU, not yet timed on a GPU). On both GPUs the original cost model mis-ranked near-optimal configs (ρ = −0.67 and −0.37), which is why the tuner measures every candidate; a revised model that counts shared-memory issue cycles and exposed load latency ranks the recorded RTX 5050 run at ρ = +0.75 (in-sample, see below).
 
 ---
 
@@ -29,19 +29,19 @@ Lowers `GEMM + bias + GELU` from `linalg` to NVIDIA PTX with custom C++ passes a
 | Component | State |
 | --- | --- |
 | Bank-conflict model (`compiler/include/PtxForge/BankModel.h`, `tools/bank_sim.cpp`) | ✅ **compiled and run**; known-answer tests pass |
-| C++ tuner core (`core/`: space, cost model, roofline, KG, advisors, search, trace writer, JSON) | ✅ **compiled and tested** — 16 C++ unit tests, clean under ASan/UBSan, runs with the *simulated* runner |
+| C++ tuner core (`core/`: space, cost model, roofline, KG, advisors, search, trace writer, JSON) | ✅ **compiled and tested** — 17 C++ unit tests, clean under ASan/UBSan, runs with the *simulated* runner |
 | C++ ↔ Python reference parity | ✅ **tested**: identical search space and modeled numbers on all 3,610 configs × 5 GPUs × 3 sizes (`make parity`) |
 | External/LLM advisor protocol (C++ side, validation guard) | ✅ **tested** with a fake advisor script; `scripts/llm_propose.py` (the actual API call) |
 | Studio (`studio/index.html`) | ✅ **rendered in headless Chromium** with a C++-produced trace, no console errors |
 | `CudaRunner` (`core/src/cuda_runner.cpp`: nvcc→PTX, `cuModuleLoadData`, correctness gate, event timing, cuBLAS) | ✅ **built and run on a Tesla T4** (Colab), including the cuBLAS baseline |
 | `CudaRunner` with a driver older than the toolkit (cannot JIT newer PTX) | ✅ falls back to `nvcc -cubin` automatically; tested against a fake driver in CI (`make cuda-fallback-test`), see DEVLOG 2026-11-17 |
 | CUDA kernel (`kernels/gemm_bias_gelu.cu`) | ✅ **built with nvcc and measured on a T4**: see Results |
-| MLIR passes + `ptxforge-opt` + CMake/TableGen | ✅ **built against LLVM/MLIR 19** (Ubuntu's prebuilt packages); 5 passes: `fuse-epilogue`, `pad-workgroup-memory`, `approximate-math`, `erase-self-copies`, `order-kernel-args` |
-| FileCheck tests (`compiler/test/*.mlir`) | ✅ **10 cases pass** under `lit`, including negative cases; a planted bug in each pass (or, for `order-kernel-args`, running without it) makes its test fail |
+| MLIR passes + `ptxforge-opt` + CMake/TableGen | ✅ **built against LLVM/MLIR 19** (Ubuntu's prebuilt packages); 7 passes: `fuse-epilogue`, `pad-workgroup-memory`, `approximate-math`, `erase-self-copies`, `order-kernel-args`, `normalize-workgroup-allocs`, `workgroup-sync` |
+| FileCheck tests (`compiler/test/*.mlir`) | ✅ **14 cases pass** under `lit`, including negative cases; a planted bug in each pass (or, for `order-kernel-args`, running without it) makes its test fail |
 | `scripts/lower_to_ptx.sh` + `schedule_template.mlir` | ✅ **run end to end**: linalg → fused, tiled, vectorized kernel → PTX for `sm_75`, for 5 tile configs, in about 0.2 s, with no CUDA toolkit or libdevice |
 | Numerical check of the MLIR lowering | ✅ **on CPU**: the same schedule minus GPU mapping, compiled with LLVM, matches an fp64 NumPy reference (max error about 1e-6) at 3 sizes and 4 tile shapes (`tests/check_lowering_cpu.py`) |
 | MLIR-generated PTX on a GPU | ✅ **run on an RTX 5050 Laptop GPU**: correct at 3,008 GFLOP/s (31.6% of cuBLAS), see Results. The first attempt produced NaN because outlining had reordered the kernel's parameters; fixed by `ptxforge-order-kernel-args` (DEVLOG). Not yet run on a T4 |
-| Shared-memory tiles in the MLIR path | ⚠️ not yet: A/B are read from global memory (through L1/L2), so `pad-workgroup-memory` has nothing to pad in this pipeline yet (milestone M2) |
+| Shared-memory tiles in the MLIR path | ✅ **built, checked on CPU, not yet timed on a GPU**: each K step copies A and B tiles into padded shared memory with float4 stores, two barriers, accumulator in registers (see [The MLIR compiler path](#the-mlir-compiler-path)) |
 | Measured GPU results | ✅ 40-trial tuning runs on a T4 and an RTX 5050 Laptop GPU for the `nvcc` backend (see Results); advisor ablation on real hardware not yet run |
 | Second GPU architecture: RTX 5050 Laptop (Blackwell, `sm_120`) | ✅ **40-trial tune measured**: best 7,547 GFLOP/s, 79.3% of cuBLAS, ρ = −0.37 (see Results); `--gpu rtx5050`, `scripts/rtx5050_run.sh` |
 
@@ -94,8 +94,27 @@ configs that differ only in BK and per-thread tile shape, while they measured an
 - **Deeper K tiles helped on Blackwell,** BK 32 being best in both rows, which the model's arithmetic-intensity term
   doesn't separate either.
 
-Between them the two architectures give the cost model's next fix a concrete target: make the shared-memory read
-model distinguish per-thread tile shapes (and K depth), then re-measure the rank correlation on a random sample of configs.
+**The fix (same day).** The model's bank term took the *worst* conflict degree of three access patterns. The revised
+model (`core/include/ptxforge/cost_model.hpp`, mirrored in Python and parity-checked on every config) instead:
+
+- **counts shared-memory issue cycles against FMA issue cycles** per K step and warp: every A and B load instruction
+  costs its phases times its conflict degree, with loads issued as the widest vector their alignment allows (a float4
+  warp load is 4 conflict-free phases, not 4 scalar 4-way-conflicted loads); 128 FP32 lanes per SM on Blackwell, 64 on
+  Turing. An 8×4 micro-tile issues 12 cycles of loads per 32 FMAs where 4×8 issues 20, which is the difference measured above.
+- **adds exposed load latency:** with no double buffering a block waits about one DRAM round trip (600 cycles, set
+  a priori) per K step, and its co-resident blocks hide it with B·C/(B·C + L) where C is a block's FMA work per step.
+  Deeper K steps mean more work per wait.
+
+`python3 scripts/model_rank.py runs/rtx5050_2048.json` re-scores the measured trials with the current model:
+
+| Trace | Trials | ρ, model at the time | ρ, revised model | Revised model's top pick |
+|---|---:|---:|---:|---|
+| RTX 5050, 2048³ tune | 40 | −0.37 | **+0.75** | measured 7,245 (best 7,547) |
+| RTX 5050, 1024³ smoke test | 5 | −0.40 | +0.72 | measured 4,914 (best 5,299; tied with it in the model) |
+
+Both traces are **in-sample**: the model was revised while looking at them (DEVLOG lists what was tried). They show
+the model can describe these runs, not that it predicts new ones. The test that counts is the next tuning run, which
+records the revised model's predictions before measuring.
 
 Two caveats on these numbers:
 
@@ -114,11 +133,12 @@ error 4.9e-6, every output written) at **3,008 GFLOP/s**, 31.6% of cuBLAS SGEMM 
 is also slower than cuBLAS followed by a separate bias + GELU pass (5.71 ms vs 2.75 ms), so fusion doesn't pay off
 yet. That is expected for this schedule: it doesn't stage A and B tiles in shared memory, so every thread re-reads
 global memory. Its first run on this GPU produced NaN; the cause (kernel parameters in the wrong order) is fixed and
-described in DEVLOG.
+described in DEVLOG. The schedule has since been changed to stage A and B in shared memory (next section); that
+kernel has not been timed yet.
 
-Next experiments: rank correlation on a random sample of configs, on both GPUs; the `none / random / rules / kg` advisor
-ablation with `--runner cuda`; a shared-memory read model that separates per-thread tile shapes; and shared-memory staging in the MLIR
-schedule.
+Next experiments: time the shared-memory MLIR kernel on the RTX 5050; a new tuning run with the revised model (its
+first out-of-sample ρ) plus ρ on a random sample of configs, on both GPUs; the `none / random / rules / kg` advisor
+ablation with `--runner cuda`; double buffering in the MLIR schedule.
 
 ---
 
@@ -129,14 +149,15 @@ schedule.
 | Stage | What happens | Pass |
 | --- | --- | --- |
 | 1 | Bias-add and GELU merge into one `linalg.generic`; it and the matmul are tagged as a pair | `ptxforge-fuse-epilogue` (custom) |
-| 2 | Tile to 64×64 per thread block and 4×4 per thread, pull the matmul and its zero-fill into both loops, step K by 16, vectorize each thread's work, bufferize so the result is written straight into `C`, map the loops to `gpu.launch` | transform schedule rendered by `ptxforge-tune schedule` |
-| 3 | Drop the no-op tile copies bufferization leaves behind; replace `tanh` and `fabs` with arith ops so no libdevice is needed; unroll vectors | `ptxforge-erase-self-copies`, `ptxforge-approximate-math` (custom) |
-| 4 | Pad 2-D shared-memory buffers to avoid bank conflicts (no-op until tiles are staged in shared memory) | `ptxforge-pad-workgroup-memory` (custom) |
-| 5–6 | Outline the kernel and put its parameters back in the source order (outlining orders them by first use); lower to NVVM, emit PTX with LLVM's NVPTX backend, extract it. The script fails if the final launch is out of order | upstream `gpu-kernel-outlining`, `ptxforge-order-kernel-args` (custom), upstream `gpu-lower-to-nvvm-pipeline` |
+| 2 | Tile to 64×64 per thread block; the block steps K by 16, and `promote` stages each step's 64×16 slice of A and 16×64 slice of B in shared memory; every thread computes a 4×4 micro-tile from them while the two copies are spread over all 256 threads (one float4 each); vectorize; map to `gpu.launch` without barriers, so the accumulator can be hoisted into registers across K and the block-sized accumulator buffer disappears (store-to-load forwarding) | transform schedule rendered by `ptxforge-tune schedule` |
+| 3 | Fold `promote`'s byte buffers into typed shared allocations; drop the no-op tile copies bufferization leaves behind; replace `tanh` and `fabs` with arith ops so no libdevice is needed; unroll vectors | `ptxforge-normalize-workgroup-allocs`, `ptxforge-erase-self-copies`, `ptxforge-approximate-math` (custom) |
+| 4 | Pad the shared tiles to avoid bank conflicts, with a 16-byte access model so rows stay float4-aligned (64×16 → 64×20, 16×64 → 16×68) | `ptxforge-pad-workgroup-memory` (custom) |
+| 5–6 | Outline the kernel and put its parameters back in the source order (outlining orders them by first use); turn the shared tiles into 16-byte-aligned kernel attributions and add the K loop's two barriers (after the copies, at the end of the step); lower to NVVM, emit PTX with LLVM's NVPTX backend, extract it. The script fails if the final launch is out of order | upstream `gpu-kernel-outlining`, `ptxforge-order-kernel-args`, `ptxforge-workgroup-sync` (custom), upstream `gpu-lower-to-nvvm-pipeline` |
 
 The result (`kernels/generated/gemm_bias_gelu_2048_sm75.ptx`) is one kernel taking four pointers in the source order (A, B, bias, C), 16×16 threads per block,
-with each thread's 4×4 accumulator in registers (no local memory) and each K step fully unrolled into 256 FMAs. CI regenerates it and fails if the
-committed copy is stale.
+two `.shared .align 16` tiles (5,120 and 4,352 bytes), and per K step: two `st.shared.v4` (each thread's share of the tile copies), `bar.sync`,
+32 `ld.shared.v4` and 256 FMAs with the 4×4 accumulator in registers (no local memory), `bar.sync`. CI regenerates it and fails if the committed copy
+is stale; `tests/check_lowering_cpu.py` runs the same schedule on the CPU against an fp64 reference for three tile configs.
 
 What was fixed to get here is in `docs/DEVLOG.md`. In short: one TableGen declaration, a lit config for current `lit`, constants turning into kernel
 parameters, `tanh`/`fabs`/n-D `fma` falling back to libdevice, and a result buffer being copied instead of written in place.
@@ -147,7 +168,7 @@ git clone https://github.com/RakshitRPathak/ptxforge && cd ptxforge
 python3 scripts/run_ptx_on_gpu.py --json runs/mlir_t4.json
 ```
 It checks the output against an fp64 reference, then times the kernel against cuBLAS SGEMM and against cuBLAS + a separate bias/GELU pass.
-Expect it to be well below the tuned `nvcc` kernel: this schedule doesn't stage tiles in shared memory yet.
+The previous schedule (no shared memory) ran at 3,008 GFLOP/s on the RTX 5050; the shared-memory one has not been timed yet.
 
 ---
 
@@ -164,7 +185,8 @@ Expect it to be well below the tuned `nvcc` kernel: this schedule doesn't stage 
         │ backend B: MLIR (the real project):  │                │ studio (HTML)   │
         │  linalg ─ptxforge-fuse-epilogue─►    │                │ roofline · IR   │
         │  transform schedule (tile+fuse) ─►   │                │ stages · trials │
-        │  bufferize ─pad-workgroup-memory─►   │                └─────────────────┘
+        │  bufferize ─promote to shared─►      │
+        │  pad-workgroup-memory ─workgroup-sync│                └─────────────────┘
         │  gpu→nvvm→llvm→PTX                   │
         └──────────────────┬───────────────────┘
                            │ PTX

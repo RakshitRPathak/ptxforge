@@ -37,6 +37,7 @@ add_mlir_library(PtxForgePasses
   lib/FuseEpilogue.cpp
   lib/OrderKernelArgs.cpp
   lib/PadWorkgroupMemory.cpp
+  lib/WorkgroupMemory.cpp
 
   DEPENDS
   PtxForgePassesIncGen
@@ -52,6 +53,7 @@ add_mlir_library(PtxForgePasses
   MLIRMathTransforms
   MLIRMemRefDialect
   MLIRPass
+  MLIRSCFDialect
   MLIRTensorDialect
   MLIRTransformUtils
 )
@@ -70,6 +72,7 @@ target_link_libraries(ptxforge-opt PRIVATE
   MLIRToLLVMIRTranslationRegistration
   MLIROptLib
   MLIRPass
+  MLIRSCFDialect
 )
 mlir_check_all_link_libraries(ptxforge-opt)
 

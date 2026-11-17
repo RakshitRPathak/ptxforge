@@ -81,4 +81,30 @@ def OrderKernelArgs : Pass<"ptxforge-order-kernel-args", "mlir::ModuleOp"> {
   let dependentDialects = ["mlir::gpu::GPUDialect"];
 }
 
+def NormalizeWorkgroupAllocs : Pass<"ptxforge-normalize-workgroup-allocs"> {
+  let constructor = "ptxforge::createNormalizeWorkgroupAllocsPass()";
+  let summary = "Fold promote's byte buffer + memref.view into a typed shared-memory allocation";
+  let description = [{
+    `transform.structured.promote` allocates each shared-memory tile as an i8 buffer, views it as the
+    tile type and deallocates it. This pass rewrites the alloc + view into a single typed
+    `memref.alloc` in workgroup memory and erases the dealloc, so the padding pass can change its row
+    length. Anything other than one view at byte offset 0 filling the buffer is left alone.
+  }];
+  let dependentDialects = ["mlir::memref::MemRefDialect"];
+}
+
+def WorkgroupSync : Pass<"ptxforge-workgroup-sync"> {
+  let constructor = "ptxforge::createWorkgroupSyncPass()";
+  let summary = "Make shared-memory allocations kernel attributions and add the K-loop barriers";
+  let description = [{
+    Run on outlined kernels. Every `memref.alloc` in a `gpu.func` kernel becomes a workgroup
+    attribution with 16-byte alignment (`llvm.align`, for 128-bit shared loads); the schedule only puts
+    allocations in per-block code, where an allocation means one buffer per thread block. Then, in
+    every `scf.for` in a kernel whose body writes shared memory, a `gpu.barrier` goes before
+    the first op that reads shared memory and another at the end of the body. Fails if a loop body
+    reads shared memory before its last shared-memory write, or on a dynamic allocation.
+  }];
+  let dependentDialects = ["mlir::gpu::GPUDialect"];
+}
+
 #endif // PTXFORGE_PASSES
