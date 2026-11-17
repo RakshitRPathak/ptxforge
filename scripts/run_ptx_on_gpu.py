@@ -90,7 +90,7 @@ def main():
     unfused_ms = time_ms(lambda: gelu_tanh(cp.matmul(A, B) + bias))
     res = {
         "gpu": gpu, "n": n, "kernel": kernel_name, "grid": grid, "block": block, "correct": ok,
-        "max_abs_err": max_err, "mlir_ms": ms, "mlir_gflops": flops / ms / 1e6,
+        "unwritten": unwritten, "max_abs_err": max_err, "mlir_ms": ms, "mlir_gflops": flops / ms / 1e6,
         "cublas_sgemm_ms": cublas_ms, "cublas_sgemm_gflops": flops / cublas_ms / 1e6,
         "cublas_plus_unfused_epilogue_ms": unfused_ms,
     }

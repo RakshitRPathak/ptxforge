@@ -68,4 +68,17 @@ def EraseSelfCopies : Pass<"ptxforge-erase-self-copies"> {
   }];
 }
 
+def OrderKernelArgs : Pass<"ptxforge-order-kernel-args", "mlir::ModuleOp"> {
+  let constructor = "ptxforge::createOrderKernelArgsPass()";
+  let summary = "Order outlined GPU kernel parameters like the host function's arguments";
+  let description = [{
+    `gpu-kernel-outlining` orders kernel parameters by first use inside the kernel body, so the
+    PTX entry point's signature changes with the schedule (the fused GEMM kernel came out as
+    (C, A, B, bias) for a source function taking (A, B, bias, C)). Run right after outlining, this
+    pass sorts each kernel's parameters, and its gpu.launch_func operands, by the argument number of
+    the host-function argument they come from, so the kernel ABI matches the source signature.
+  }];
+  let dependentDialects = ["mlir::gpu::GPUDialect"];
+}
+
 #endif // PTXFORGE_PASSES

@@ -50,12 +50,28 @@ echo "[4/6] shared-memory padding"
 echo "[5/6] outline the kernel, lower to NVVM and emit PTX ($SM)"
 # Constants must be inside the launch when it is outlined, or each becomes a kernel parameter.
 # Greedy rewrites (canonicalize, the padding pass) hoist them out, so sink them back right before.
+# Outlining orders kernel parameters by first use (the fused kernel came out as C, A, B, bias), so it
+# runs here explicitly and ptxforge-order-kernel-args restores the source order (A, B, bias, C); the
+# pipeline's own outlining then has nothing left to do.
 # math.fma on 2-D vectors (from the vectorized tanh) is lowered here: convert-gpu-to-nvvm in LLVM 19
 # only handles scalar and 1-D math ops.
 "$OPT" --gpu-launch-sink-index-computations \
+       --gpu-kernel-outlining \
+       --ptxforge-order-kernel-args \
        --convert-math-to-llvm \
        --gpu-lower-to-nvvm-pipeline="cubin-chip=$SM cubin-format=isa opt-level=3 kernel-bare-ptr-calling-convention=true" \
        "$OUT/04_padded.mlir" > "$OUT/05_binary.mlir"
+
+# Guard the kernel ABI: with memrefs lowered to descriptors, each launch argument is one source memref's
+# aligned pointer, so source order means strictly increasing %argN.
+python3 - "$OUT/05_binary.mlir" <<'PY'
+import re, sys
+text = open(sys.argv[1]).read()
+for m in re.finditer(r"gpu\.launch_func\s+(@\S+).*?args\(([^)]*)\)", text):
+    nums = [int(n) for n in re.findall(r"%arg(\d+)\s*:", m.group(2))]
+    if nums != sorted(nums) or len(set(nums)) != len(nums):
+        sys.exit(f"error: kernel {m.group(1)} takes its parameters out of source order: {m.group(2)}")
+PY
 
 echo "[6/6] extract PTX"
 python3 "$HERE/extract_ptx.py" "$OUT/05_binary.mlir" "$OUT/06_kernel.ptx"

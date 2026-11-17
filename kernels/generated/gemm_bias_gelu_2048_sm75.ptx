@@ -26,9 +26,9 @@
 	cvta.to.global.u64 	%rd1, %rd18;
 	ld.param.u64 	%rd19, [gemm_bias_gelu_kernel_param_1];
 	ld.param.u64 	%rd20, [gemm_bias_gelu_kernel_param_2];
-	cvta.to.global.u64 	%rd21, %rd20;
-	cvta.to.global.u64 	%rd22, %rd19;
-	cvta.to.global.u64 	%rd2, %rd17;
+	cvta.to.global.u64 	%rd2, %rd20;
+	cvta.to.global.u64 	%rd21, %rd19;
+	cvta.to.global.u64 	%rd22, %rd17;
 	mov.u32 	%r1, %ctaid.x;
 	mov.u32 	%r2, %ctaid.y;
 	mov.u32 	%r3, %tid.x;
@@ -458,7 +458,7 @@ $L__BB0_1:
 	@%p1 bra 	$L__BB0_1;
 	or.b64  	%rd30, %rd6, %rd4;
 	shl.b64 	%rd31, %rd5, 2;
-	add.s64 	%rd32, %rd1, %rd31;
+	add.s64 	%rd32, %rd2, %rd31;
 	ld.global.f32 	%f405, [%rd32];
 	ld.global.f32 	%f406, [%rd32+4];
 	ld.global.f32 	%f407, [%rd32+8];
@@ -912,7 +912,7 @@ $L__BB0_1:
 	mul.rn.f32 	%f807, %f790, %f774;
 	mul.rn.f32 	%f808, %f789, %f773;
 	shl.b64 	%rd33, %rd30, 2;
-	add.s64 	%rd34, %rd2, %rd33;
+	add.s64 	%rd34, %rd1, %rd33;
 	add.s64 	%rd35, %rd34, %rd7;
 	shl.b64 	%rd36, %rd3, 2;
 	add.s64 	%rd37, %rd35, %rd36;

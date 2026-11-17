@@ -70,3 +70,26 @@ fails; the error then names the driver version.
 that rejects PTX the same way and computes the kernel on the CPU. With the fix, all trials pass the correctness gate
 through cubins and the notice prints once; with the old code it reproduces the laptop failure exactly (0 of 6
 trials). CI runs it (`make cuda-fallback-test`). **Not checked:** a real run on the laptop.
+
+## 2026-11-17: the MLIR-generated kernel's first GPU run produced NaN
+
+**Expected** `scripts/run_ptx_on_gpu.py` to pass its fp64 check on the RTX 5050. **Saw** `correct: false`,
+`max_abs_err: NaN`. **Because** the kernel's parameters were not in the order everyone assumed. The source function is
+`@gemm_bias_gelu(A, B, bias, C)` and the README and the runner said the PTX takes (A, B, bias, C). Decoding the PTX
+showed parameter 0 is the one stored to, parameter 3 is read once per column, and parameters 1 and 2 feed the K loop:
+the real order was **(C, A, B, bias)**. `gpu-kernel-outlining` orders captured values by first use in the kernel body,
+and the body addresses its output tile first. The runner's call therefore read the bias from C, which it pre-fills
+with NaN, and wrote the result over A, leaving C untouched.
+
+Why nothing caught it: `tests/check_lowering_cpu.py` runs the schedule without GPU mapping, so it calls the function
+before outlining, where the order is still the source order. It validates the arithmetic, not the kernel ABI.
+
+**Fix:** a new pass, `ptxforge-order-kernel-args`, run right after an explicit `--gpu-kernel-outlining`, permutes each
+kernel's parameters and its `gpu.launch_func` operands into the host function's argument order (anything that is not
+a host argument goes last). The regenerated PTX differs only in which parameter register feeds which base address.
+`lower_to_ptx.sh` now fails if the final launch passes descriptor pointers out of order, and the runner records how
+many output elements were left unwritten.
+
+**Checked:** FileCheck test `order-kernel-args.mlir` (fails on unpassed IR); decoding the new PTX shows parameter 3 is
+stored to, parameter 2 is read 4 times per thread (bias) and parameters 0 and 1 carry the 64 GEMM loads each. CPU
+numerical checks unchanged. **Not checked:** the rerun on the GPU.

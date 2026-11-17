@@ -38,7 +38,7 @@ Lowers `GEMM + bias + GELU` from `linalg` to NVIDIA PTX with custom C++ passes a
 | FileCheck tests (`compiler/test/*.mlir`) | ✅ **7 cases pass** under `lit`, including negative cases; a planted bug in each pass makes its test fail |
 | `scripts/lower_to_ptx.sh` + `schedule_template.mlir` | ✅ **run end to end**: linalg → fused, tiled, vectorized kernel → PTX for `sm_75`, for 5 tile configs, in about 0.2 s, with no CUDA toolkit or libdevice |
 | Numerical check of the MLIR lowering | ✅ **on CPU**: the same schedule minus GPU mapping, compiled with LLVM, matches an fp64 NumPy reference (max error about 1e-6) at 3 sizes and 4 tile shapes (`tests/check_lowering_cpu.py`) |
-| MLIR-generated PTX on a GPU | ⚠️ **not yet run**: `scripts/run_ptx_on_gpu.py` checks and times `kernels/generated/gemm_bias_gelu_2048_sm75.ptx` on a Colab T4 |
+| MLIR-generated PTX on a GPU | ⚠️ first run (RTX 5050, 2026-11-17) **failed the correctness gate**: outlining had put the kernel's parameters in the order (C, A, B, bias), so the runner's (A, B, bias, C) call fed it the wrong buffers. Fixed with `ptxforge-order-kernel-args` plus an ABI guard in `lower_to_ptx.sh` (DEVLOG); not yet rerun. `scripts/run_ptx_on_gpu.py` checks and times `kernels/generated/gemm_bias_gelu_2048_sm75.ptx` |
 | Shared-memory tiles in the MLIR path | ⚠️ not yet: A/B are read from global memory (through L1/L2), so `pad-workgroup-memory` has nothing to pad in this pipeline yet (milestone M2) |
 | Measured GPU results | ✅ one 40-trial tuning run on a T4 for the `nvcc` backend (see Results); advisor ablation on real hardware not yet run |
 | Second GPU architecture: RTX 5050 Laptop (Blackwell, `sm_120`) | ◐ profile `--gpu rtx5050` is in the tuner and the Python reference and passes the parity check; `scripts/rtx5050_run.sh` does the whole run. ⚠️ **No measured numbers yet**: the first attempt failed at module load because the driver was older than the toolkit (fixed, see DEVLOG) |
@@ -80,7 +80,7 @@ Next experiments: rank correlation on a random sample of configs (to measure the
 | 4 | Pad 2-D shared-memory buffers to avoid bank conflicts (no-op until tiles are staged in shared memory) | `ptxforge-pad-workgroup-memory` (custom) |
 | 5–6 | Outline the kernel, lower to NVVM, emit PTX with LLVM's NVPTX backend, extract it | upstream `gpu-lower-to-nvvm-pipeline` |
 
-The result (`kernels/generated/gemm_bias_gelu_2048_sm75.ptx`) is one kernel taking four pointers (A, B, bias, C), 16×16 threads per block,
+The result (`kernels/generated/gemm_bias_gelu_2048_sm75.ptx`) is one kernel taking four pointers in the source order (A, B, bias, C), 16×16 threads per block,
 with each thread's 4×4 accumulator in registers (no local memory) and each K step fully unrolled into 256 FMAs. CI regenerates it and fails if the
 committed copy is stale.
 

@@ -14,6 +14,7 @@ std::unique_ptr<mlir::Pass> createFuseEpiloguePass();
 std::unique_ptr<mlir::Pass> createPadWorkgroupMemoryPass();
 std::unique_ptr<mlir::Pass> createApproximateMathPass();
 std::unique_ptr<mlir::Pass> createEraseSelfCopiesPass();
+std::unique_ptr<mlir::Pass> createOrderKernelArgsPass();
 
 #define GEN_PASS_REGISTRATION
 #include "PtxForge/Passes.h.inc"

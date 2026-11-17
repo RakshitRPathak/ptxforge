@@ -35,6 +35,7 @@ add_mlir_library(PtxForgePasses
   lib/ApproximateMath.cpp
   lib/EraseSelfCopies.cpp
   lib/FuseEpilogue.cpp
+  lib/OrderKernelArgs.cpp
   lib/PadWorkgroupMemory.cpp
 
   DEPENDS
