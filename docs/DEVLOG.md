@@ -175,3 +175,14 @@ smoke configs tie in the model). Both traces are now in-sample.
 how the model ranks configs it has not seen. The next tuning run records the revised model's predictions before
 measuring them; that ρ is the first honest one.
 
+## 2026-11-17: a rerun that looked like a result
+
+A run meant to time the shared-memory kernel came back at 2,109 GFLOP/s, 32.2% of same-run cuBLAS, against 31.6% for the
+first, unstaged run. It looked like "staging made no difference". **It was the old kernel**: the laptop's checkout was
+still at `aab6e79` (switching branches had failed on an untracked `studio/rtx5050.html` that `rtx5050_run.sh` writes),
+and that commit's PTX has no `ld.shared`. The max error matching the first run to every digit was the clue. Kept as
+`runs/mlir_rtx5050_rerun.json` for what it does show: the same kernel at the same share of cuBLAS while cuBLAS itself
+moved from 9,529 to 6,557 GFLOP/s with the laptop's power state.
+
+**Rule from now on:** attribute a GPU result to a kernel only after checking the PTX that ran (`grep -c ld.shared`, or
+its hash) and the commit it came from.
