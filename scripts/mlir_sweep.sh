@@ -14,7 +14,21 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
 OUT=${1:-$ROOT/runs/mlir_sweep}
 mkdir -p "$OUT"
-for ptx in "$ROOT"/kernels/generated/sweep/*.ptx; do
+# Refuse to time anything that is not what its name says (a stale checkout once produced a "result" for the
+# wrong kernel; docs/DEVLOG.md, 2026-11-17).
+shopt -s nullglob
+files=("$ROOT"/kernels/generated/sweep/*.ptx)
+[[ ${#files[@]} -eq 10 ]] || { echo "error: expected 10 kernels in kernels/generated/sweep, found ${#files[@]} (git pull?)" >&2; exit 1; }
+for ptx in "${files[@]}"; do
+  n=$(grep -c "ld.shared" "$ptx" || true)
+  case "$ptx" in
+    *_smem.ptx)   [[ $n -gt 0 ]] || { echo "error: $ptx has no shared-memory loads" >&2; exit 1; } ;;
+    *_global.ptx) [[ $n -eq 0 ]] || { echo "error: $ptx uses shared memory" >&2; exit 1; } ;;
+  esac
+done
+echo "commit $(git -C "$ROOT" rev-parse --short HEAD); 10 kernels checked (5 staged, 5 unstaged)"
+
+for ptx in "${files[@]}"; do
   name=$(basename "$ptx" .ptx)
   bm=${name%%x*}; rest=${name#*x}; bn=${rest%%x*}
   echo "== $name"
