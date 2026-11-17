@@ -48,8 +48,13 @@ struct CudaRunner::Impl {
   Options opt;
   CUdevice dev{};
   CUcontext ctx{};
-  int cc_major = 0, cc_minor = 0, max_threads_sm = 0, num_sm = 0;
+  int cc_major = 0, cc_minor = 0, max_threads_sm = 0, num_sm = 0, driver_version = 0;
   std::string dev_name;
+  // Set when the driver refuses nvcc's PTX as too new (CUDA_ERROR_UNSUPPORTED_PTX_VERSION). From then on
+  // every config is also compiled to a cubin (SASS for this GPU) and that is loaded instead: CUDA's minor
+  // version compatibility lets an older driver of the same major version run SASS from a newer toolkit,
+  // but never JIT its PTX.
+  bool use_cubin = false;
 
   // problem-sized buffers, (re)allocated when the problem changes
   Problem prob{0, 0, 0};
@@ -69,6 +74,7 @@ struct CudaRunner::Impl {
     CK(cuDeviceGetAttribute(&cc_minor, CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, dev));
     CK(cuDeviceGetAttribute(&max_threads_sm, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR, dev));
     CK(cuDeviceGetAttribute(&num_sm, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT, dev));
+    CK(cuDriverGetVersion(&driver_version));
     std::filesystem::create_directories(opt.workdir);
   }
 
@@ -142,13 +148,14 @@ struct CudaRunner::Impl {
 #endif
   }
 
-  Measurement run(const std::string &ptx, const std::string &kernel, const Problem &p, int gx, int gy, int block) {
+  // `image` is PTX text or a cubin; cuModuleLoadData tells them apart by content.
+  Measurement run(const std::string &image_in, const std::string &kernel, const Problem &p, int gx, int gy, int block) {
     Measurement m;
     CUmodule mod = nullptr;
     try {
       ensure(p);
-      std::string image = ptx;
-      image.push_back('\0'); // PTX must be NUL-terminated
+      std::string image = image_in;
+      image.push_back('\0'); // PTX must be NUL-terminated; harmless after a cubin
       CK(cuModuleLoadData(&mod, image.data()));
       CUfunction fn;
       CK(cuModuleGetFunction(&fn, mod, kernel.c_str()));
@@ -209,11 +216,34 @@ struct CudaRunner::Impl {
     return m;
   }
 
-  std::string ptx_path(const Config &c) const {
+  std::string kernel_path(const Config &c, const char *ext) const {
     return opt.workdir + "/k_" + std::to_string(c.BM) + "_" + std::to_string(c.BN) + "_" + std::to_string(c.BK) + "_" +
-           std::to_string(c.TM) + "_" + std::to_string(c.TN) + "_" + std::to_string(c.PAD) + ".ptx";
+           std::to_string(c.TM) + "_" + std::to_string(c.TN) + "_" + std::to_string(c.PAD) + ext;
+  }
+  std::string ptx_path(const Config &c) const { return kernel_path(c, ".ptx"); }
+
+  // nvcc -<kind> (ptx or cubin) for one config, cached on disk. Returns an error message, or "" on success.
+  std::string compile(const Config &c, const GPU &hw, const char *kind, const std::string &path) const {
+    if (std::filesystem::exists(path)) return "";
+    std::string cmd = opt.nvcc + " -" + kind + " -arch=" + hw.arch + " -O3 -lineinfo";
+    for (const auto &d : c.defines()) cmd += " " + d;
+    cmd += " '" + opt.root + "/kernels/gemm_bias_gelu.cu' -o '" + path + "'";
+    std::string log;
+    if (run_capture(cmd, log) != 0) {
+      std::filesystem::remove(path);
+      return "nvcc failed: " + log.substr(log.size() > 800 ? log.size() - 800 : 0);
+    }
+    return "";
   }
 };
+
+namespace {
+bool is_ptx_too_new(const std::string &error) {
+  // cuGetErrorString(CUDA_ERROR_UNSUPPORTED_PTX_VERSION)
+  return error.find("unsupported toolchain") != std::string::npos;
+}
+std::string cuda_version(int v) { return std::to_string(v / 1000) + "." + std::to_string((v % 1000) / 10); }
+} // namespace
 
 CudaRunner::CudaRunner(Options o) : impl_(std::make_unique<Impl>(std::move(o))) {}
 CudaRunner::~CudaRunner() = default;
@@ -223,20 +253,35 @@ Measurement CudaRunner::run_ptx(const std::string &ptx, const std::string &kerne
 }
 
 Measurement CudaRunner::measure(const Config &c, const Problem &p, const GPU &hw) {
-  const std::string path = impl_->ptx_path(c);
-  if (!std::filesystem::exists(path)) {
-    std::string cmd = impl_->opt.nvcc + " -ptx -arch=" + hw.arch + " -O3 -lineinfo";
-    for (const auto &d : c.defines()) cmd += " " + d;
-    cmd += " '" + impl_->opt.root + "/kernels/gemm_bias_gelu.cu' -o '" + path + "'";
-    std::string log;
-    if (run_capture(cmd, log) != 0) {
-      Measurement m;
-      m.error = "nvcc failed: " + log.substr(log.size() > 800 ? log.size() - 800 : 0);
-      return m;
-    }
-  }
+  Impl &I = *impl_;
   const auto [gx, gy] = c.grid(p);
-  return impl_->run(read_file(path), "gemm_bias_gelu", p, gx, gy, c.threads());
+  // The PTX is always generated: the studio shows it, and it is what the driver JITs when it can.
+  if (std::string err = I.compile(c, hw, "ptx", I.ptx_path(c)); !err.empty()) {
+    Measurement m;
+    m.error = err;
+    return m;
+  }
+  if (!I.use_cubin) {
+    Measurement m = I.run(read_file(I.ptx_path(c)), "gemm_bias_gelu", p, gx, gy, c.threads());
+    if (!is_ptx_too_new(m.error)) return m;
+    I.use_cubin = true;
+    std::fprintf(stderr,
+                 "[cuda] the driver (CUDA %s) cannot JIT this nvcc's PTX, which targets a newer CUDA version.\n"
+                 "[cuda] loading cubins (SASS built by nvcc for %s) instead. Updating the NVIDIA driver restores\n"
+                 "[cuda] the PTX path; the kernels and the timing are the same either way.\n",
+                 cuda_version(I.driver_version).c_str(), hw.arch.c_str());
+  }
+  const std::string cubin = I.kernel_path(c, ".cubin");
+  if (std::string err = I.compile(c, hw, "cubin", cubin); !err.empty()) {
+    Measurement m;
+    m.error = err;
+    return m;
+  }
+  Measurement m = I.run(read_file(cubin), "gemm_bias_gelu", p, gx, gy, c.threads());
+  if (m.error.rfind("cuModuleLoadData", 0) == 0)  // the cubin was refused too
+    m.error += " (driver CUDA " + cuda_version(I.driver_version) +
+               "; a toolkit with a newer major version than the driver needs a driver update)";
+  return m;
 }
 
 std::vector<Stage> CudaRunner::stages(const Config &c, const Problem &, const GPU &) {

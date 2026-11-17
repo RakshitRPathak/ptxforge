@@ -11,6 +11,16 @@ jobs:
       - run: make test
       - run: make demo
 
+  cuda-runner:
+    # The real CudaRunner compiled against NVIDIA's headers and run against a fake driver, no GPU:
+    # checks the PTX path and the cubin fallback for a driver older than the toolkit.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: CUDA headers (pip, headers only)
+        run: pip install --break-system-packages nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 nvidia-cuda-nvcc-cu12 nvidia-cuda-cccl-cu12
+      - run: make cuda-fallback-test
+
   compiler:
     # MLIR passes against Ubuntu's prebuilt LLVM/MLIR 19, then linalg -> PTX and a CPU numerical check.
     runs-on: ubuntu-24.04

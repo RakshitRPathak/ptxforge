@@ -2,6 +2,8 @@
 //
 // Pipeline per config:  nvcc -ptx (subprocess, cached)  ->  cuModuleLoadData IN-PROCESS (the driver
 // JIT-compiles PTX to SASS)  ->  correctness gate vs an fp64 CPU reference  ->  event timing.
+// If the driver is older than the toolkit it cannot JIT the toolkit's PTX; the runner then switches to
+// nvcc -cubin and loads SASS instead (minor version compatibility), and says so on stderr.
 // The MLIR backend (milestone M2) reuses run_ptx() directly: any PTX with the same kernel signature
 //   (const float* A, const float* B, const float* bias, float* C, int M, int N, int K)
 // can be benchmarked, so the oracle kernel and the compiler's output go through the same gate.

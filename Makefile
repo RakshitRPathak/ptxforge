@@ -1,4 +1,4 @@
-.PHONY: all test bank demo cuda parity studio clean compiler compiler-test ptx
+.PHONY: all test bank demo cuda parity studio clean compiler compiler-test ptx cuda-fallback-test
 PY ?= python3
 CXX ?= g++
 CXXFLAGS ?= -std=c++20 -O2 -Wall -Wextra
@@ -40,6 +40,13 @@ cuda:  ## real GPU runner (needs CUDA toolkit + a GPU). Built and run on a Colab
 	$(CXX) $(CXXFLAGS) $(INC) -DPTXFORGE_WITH_CUDA -DPTXFORGE_WITH_CUBLAS \
 	    core/src/main.cpp core/src/cuda_runner.cpp -o build/ptxforge-tune-cuda \
 	    -I$(CUDA_HOME)/include -L$(CUDA_HOME)/lib64 -L$(CUDA_HOME)/lib64/stubs -lcuda -lcublas -lcudart
+
+# Header directories from the pip packages nvidia-cuda-runtime-cu12, nvidia-cublas-cu12, nvidia-cuda-nvcc-cu12
+# and nvidia-cuda-cccl-cu12 (headers only; no GPU or CUDA toolkit needed). Override with CUDA_HDRS="dir ...".
+CUDA_HDRS ?= $(shell $(PY) -c "import nvidia, os; print(' '.join(os.path.join(b, p, 'include') for b in nvidia.__path__ for p in ('cuda_runtime', 'cublas', 'cuda_nvcc', 'cuda_cccl') if os.path.isdir(os.path.join(b, p, 'include'))))" 2>/dev/null)
+
+cuda-fallback-test:  ## CudaRunner against a fake CUDA driver (no GPU): PTX path, and cubin fallback for an older driver
+	bash tests/fake_cuda/run.sh $(CUDA_HDRS)
 
 compiler:  ## ptxforge-opt against a prebuilt MLIR 19 (Ubuntu 24.04: apt install libmlir-19-dev mlir-19-tools llvm-19-dev clang-19)
 	cmake -S compiler -B build-mlir -G Ninja -DCMAKE_BUILD_TYPE=Release -DMLIR_DIR=$(MLIR_DIR) \
