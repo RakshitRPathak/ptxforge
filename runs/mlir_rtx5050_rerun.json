@@ -1,0 +1,23 @@
+{
+  "gpu": "NVIDIA GeForce RTX 5050 Laptop GPU",
+  "n": 2048,
+  "kernel": "gemm_bias_gelu_kernel",
+  "grid": [
+    32,
+    32,
+    1
+  ],
+  "block": [
+    16,
+    16,
+    1
+  ],
+  "correct": true,
+  "unwritten": 0,
+  "max_abs_err": 4.916668723264905e-06,
+  "mlir_ms": 8.146084594726563,
+  "mlir_gflops": 2108.9725971077605,
+  "cublas_sgemm_ms": 2.620088005065918,
+  "cublas_sgemm_gflops": 6556.981731446756,
+  "cublas_plus_unfused_epilogue_ms": 4.009288024902344
+}

@@ -134,9 +134,13 @@ is also slower than cuBLAS followed by a separate bias + GELU pass (5.71 ms vs 2
 yet. That is expected for this schedule: it doesn't stage A and B tiles in shared memory, so every thread re-reads
 global memory. Its first run on this GPU produced NaN; the cause (kernel parameters in the wrong order) is fixed and
 described in DEVLOG. The schedule has since been changed to stage A and B in shared memory (next section); that
-kernel has not been timed yet.
+kernel has not been timed yet; `bash scripts/mlir_sweep.sh` times it at five tile sizes (up to the tuned `nvcc` kernel's
+128×64×32, 8×4) next to the unstaged schedule, each against cuBLAS in the same run. A rerun of the *unstaged* kernel on a
+later evening ([`runs/mlir_rtx5050_rerun.json`](runs/mlir_rtx5050_rerun.json)) gave the same share of cuBLAS (32.2% vs
+31.6%) while cuBLAS itself measured 6,557 GFLOP/s instead of 9,529: the same laptop in a lower power state, close to
+cuda-gpu-bench's earlier 6.7–6.9, which supports the power-mode explanation above.
 
-Next experiments: time the shared-memory MLIR kernel on the RTX 5050; a new tuning run with the revised model (its
+Next experiments: time the shared-memory MLIR kernel on the RTX 5050 (`scripts/mlir_sweep.sh`); a new tuning run with the revised model (its
 first out-of-sample ρ) plus ρ on a random sample of configs, on both GPUs; the `none / random / rules / kg` advisor
 ablation with `--runner cuda`; double buffering in the MLIR schedule.
 
@@ -169,6 +173,7 @@ python3 scripts/run_ptx_on_gpu.py --json runs/mlir_t4.json
 ```
 It checks the output against an fp64 reference, then times the kernel against cuBLAS SGEMM and against cuBLAS + a separate bias/GELU pass.
 The previous schedule (no shared memory) ran at 3,008 GFLOP/s on the RTX 5050; the shared-memory one has not been timed yet.
+`bash scripts/mlir_sweep.sh` times both schedules at five tile sizes (`kernels/generated/sweep/`, all CPU-checked).
 
 ---
 
