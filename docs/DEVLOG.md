@@ -110,3 +110,68 @@ and add a K-depth term; measure ρ on a random sample.
 C++ runner and the CuPy script. Unverified explanation: power mode (this run was plugged in, performance mode). The
 `sustained` prior of 0.50 came from the lower figure. Left unchanged so this trace stays reproducible; worth
 re-measuring cuda-gpu-bench in the same power mode before changing it.
+
+## 2026-11-17: shared-memory staging in the MLIR schedule
+
+The MLIR kernel ran correctly at 3,008 GFLOP/s but read A and B from global memory in every thread's own K loop. The
+schedule now stages each K step's tiles in shared memory. The parts that did not work the obvious way:
+
+- **`bufferize_to_allocation` on the A/B slices**: in MLIR 19 it only takes op handles, not values. Instead the
+  schedule bufferizes first and then runs `transform.structured.promote` (memory space = workgroup) on the block-level
+  matmul step, so the K loop moves from per-thread to per-block code.
+- **`map_copy_to_threads` crashed** (segfault in `MapCopyToThreadsOp::applyToOne`) on memref copies; it expects tensors.
+  The two copies are tiled by hand into float4 pieces over linear thread ids (`#gpu.thread<linear_dim_*>`), sized by a
+  new rule (`copy_piece`, the same in the C++ tuner, the Python tuner and the CPU check) so any tile shape fits the block.
+- **The accumulator was not hoisted into registers.** Three separate reasons: the barriers `map_nested_forall_to_threads`
+  inserts (a `gpu.barrier` has memory effects on everything), the subview the accumulator is accessed through (MLIR 19's
+  hoisting refuses view-like sources), and read/write indices that were equal but distinct SSA values. Fix: map with
+  `sync_after_distribute = false`, fold the subviews into the transfer indices, CSE, then hoist. The block-sized
+  accumulator buffer that bufferization created is then written and read once by the same thread, and
+  `memref.erase_dead_alloc_and_stores` removes it.
+- **A 64×64 vector load and store of C onto itself, per thread.** Vectorization now runs after bufferization, so the
+  self-copies that `ptxforge-erase-self-copies` used to delete got vectorized first. The schedule runs that pass (after
+  CSE, so the two identical subviews are one value) right after bufferization.
+- **Padding by one float broke the float4 loads**: rows of 17 and 65 floats are not 16-byte aligned, so 32 vector loads
+  became 64 scalar ones. With `access-bytes=16 align-bytes=16` the pass pads to 20 and 68.
+- **`.shared .align 4`** on the arrays read with `ld.shared.v4`: a misaligned-address fault waiting to happen. gpu.launch
+  attributions cannot carry an alignment, gpu.func ones can (`llvm.align`), so `ptxforge-workgroup-sync` runs after
+  outlining and asks for 16.
+
+Two new passes: `ptxforge-normalize-workgroup-allocs` (promote's i8 buffer + view + dealloc → one typed allocation) and
+`ptxforge-workgroup-sync` (allocations in a kernel → aligned workgroup attributions; a barrier before the first shared
+read and one at the end of every loop body that writes shared memory; refuses a body that reads before its last write).
+
+**Checked:** CPU fp64 check for 64×64×16 4×4, 128×64×8 8×4 and 64×32×16 4×2 at n = 256 and n = 192 (max error ≤ 4.9e-7);
+FileCheck cases for both passes, which fail without the sync pass; the PTX per K step is 2 `st.shared.v4`, `bar.sync`,
+32 `ld.shared.v4`, 256 FMAs, `bar.sync`. **Not checked:** anything on a GPU. Open: the global loads in the copies are
+scalar (`ld.global.f32` ×4) because nothing tells LLVM the kernel's pointers are 16-byte aligned.
+
+## 2026-11-17: the cost model's tile-shape and K-depth blind spots
+
+**Expected** the bank-conflict term to separate the eight 128×64 configs (BK × micro-tile shape) the RTX 5050 run
+measured from 3,446 to 7,245. **Saw** one prediction for all eight. **Because** the term used the *worst* degree of
+three scalar access patterns, and those were the same for every shape; it never counted how many loads each shape
+issues. And nothing in the model depended on BK except shared-memory size.
+
+What was tried, all against `runs/rtx5050_2048.json` (so in-sample), with ρ = Spearman over its 40 trials:
+
+| Model | ρ |
+|---|---:|
+| as recorded | −0.37 |
+| shared-load issue cycles vs FMA issue cycles, scalar loads, instead of the bank and ILP terms | +0.21 |
+| old terms plus a load-latency term, L = 600 cycles | +0.29 |
+| both, latency as min(1, B·C/(C+L)) / B·C/(B·C+L) / C/(C+L) | +0.54 / +0.66 / +0.63 |
+| both, B·C/(B·C+L), L = 300 / 600 / 1200 | +0.58 / +0.66 / +0.67 |
+
+L was fixed at 600 cycles from typical DRAM latency before any of this, and B·C/(B·C+L) chosen as the standard smooth
+latency-hiding form (and the least sensitive to L), not as the best-scoring one. That model then scored **−0.70** on the
+five-trial smoke run (`runs/rtx5050_smoke.json`), which I had not looked at. **Because** its best config is a 4×4
+micro-tile 32 lanes wide, which the scalar model calls 4-way conflicted in B; but `Bs[k][tx*TN + j]` for j = 0..3 is four
+aligned consecutive floats, which ptxas issues as one 128-bit load, served in four conflict-free phases. Counting each
+load as the widest vector its alignment allows: **+0.75 on the 40-trial run, +0.72 on the smoke run** (the two best
+smoke configs tie in the model). Both traces are now in-sample.
+
+**Not checked:** that ptxas really emits LDS.128 for these reads (`cuobjdump -sass` on a built kernel will show it), and
+how the model ranks configs it has not seen. The next tuning run records the revised model's predictions before
+measuring them; that ρ is the first honest one.
+

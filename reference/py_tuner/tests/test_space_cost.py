@@ -50,6 +50,15 @@ class Cost(unittest.TestCase):
         self.assertGreater(analyze(Config(64, 64, 8, 4, 4, 0), P, T4).bank["store_As"], 1)
         self.assertEqual(analyze(Config(64, 64, 8, 4, 4, 4), P, T4).bank["store_As"], 1)
 
+    def test_tile_shape_and_k_depth_rtx5050(self):
+        # What the RTX 5050 run measured and the old model scored identically (docs/DEVLOG.md).
+        rtx = get_gpu("rtx5050")
+        pred = lambda *c: analyze(Config(*c), P, rtx).predicted_gflops  # noqa: E731
+        for bk in (8, 16, 32):
+            self.assertGreater(pred(128, 64, bk, 8, 4, 2), pred(128, 64, bk, 4, 8, 2))
+        self.assertGreater(pred(128, 64, 32, 8, 4, 2), pred(128, 64, 16, 8, 4, 2))
+        self.assertGreater(pred(128, 64, 16, 8, 4, 2), pred(128, 64, 8, 8, 4, 2))
+
     def test_gpu_table_sane(self):
         for g in GPUS.values():
             self.assertGreater(g.ridge, 1)

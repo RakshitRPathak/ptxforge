@@ -22,7 +22,7 @@ if [[ ! -f "$OUT/schedule.mlir" ]]; then
   if [[ -x "$TUNE" ]]; then
     "$TUNE" schedule --BM 64 --BN 64 --BK 16 --TM 4 --TN 4 --out "$OUT/schedule.mlir" >/dev/null
   else
-    sed -e 's/{{BM}}/64/g; s/{{BN}}/64/g; s/{{BK}}/16/g; s/{{TM}}/4/g; s/{{TN}}/4/g; s/{{TX}}/16/g; s/{{TY}}/16/g' \
+    sed -e 's/{{BM}}/64/g; s/{{BN}}/64/g; s/{{BK}}/16/g; s/{{TM}}/4/g; s/{{TN}}/4/g; s/{{TX}}/16/g; s/{{TY}}/16/g; s/{{CA_R}}/1/g; s/{{CA_C}}/4/g; s/{{CB_R}}/1/g; s/{{CB_C}}/4/g' \
         "$HERE/schedule_template.mlir" > "$OUT/schedule.mlir"
   fi
   echo "(rendered the default schedule into $OUT/schedule.mlir)"
@@ -36,28 +36,36 @@ echo "[2/6] tile, fuse, bufferize, map to blocks and threads (transform schedule
        --canonicalize --cse "$OUT/01_fused.mlir" > "$OUT/02_gpu_mapped.mlir"
 
 echo "[3/6] clean up and lower the per-thread work to loops"
-"$OPT" --ptxforge-erase-self-copies \
+# promote leaves each shared-memory tile as a byte buffer + memref.view; make it one typed allocation
+# so step 4 can pad it.
+"$OPT" --ptxforge-normalize-workgroup-allocs \
+       --ptxforge-erase-self-copies \
        --convert-linalg-to-loops \
-       --promote-buffers-to-stack="max-alloc-size-in-bytes=1024" \
        --ptxforge-approximate-math \
        --convert-vector-to-scf="full-unroll=true" \
        --canonicalize --cse "$OUT/02_gpu_mapped.mlir" > "$OUT/03_loops.mlir"
 
 echo "[4/6] shared-memory padding"
-# No-op for this schedule: A/B tiles are not staged in shared memory yet (docs/ROADMAP.md, M2).
-"$OPT" --ptxforge-pad-workgroup-memory "$OUT/03_loops.mlir" > "$OUT/04_padded.mlir"
+# Threads move whole float4s to and from the tiles, so pad with a 16-byte access model: rows stay 16-byte
+# aligned and the vector loads survive. Small per-thread buffers go to the stack (shared-memory tiles
+# are in the workgroup address space and stay allocations until step 5).
+"$OPT" --ptxforge-pad-workgroup-memory="access-bytes=16 align-bytes=16" \
+       --promote-buffers-to-stack="max-alloc-size-in-bytes=1024" \
+       "$OUT/03_loops.mlir" > "$OUT/04_padded.mlir"
 
 echo "[5/6] outline the kernel, lower to NVVM and emit PTX ($SM)"
 # Constants must be inside the launch when it is outlined, or each becomes a kernel parameter.
 # Greedy rewrites (canonicalize, the padding pass) hoist them out, so sink them back right before.
 # Outlining orders kernel parameters by first use (the fused kernel came out as C, A, B, bias), so it
 # runs here explicitly and ptxforge-order-kernel-args restores the source order (A, B, bias, C); the
-# pipeline's own outlining then has nothing left to do.
+# pipeline's own outlining then has nothing left to do. ptxforge-workgroup-sync then turns the shared-memory
+# tiles into 16-byte-aligned kernel attributions and adds the K loop's two barriers.
 # math.fma on 2-D vectors (from the vectorized tanh) is lowered here: convert-gpu-to-nvvm in LLVM 19
 # only handles scalar and 1-D math ops.
 "$OPT" --gpu-launch-sink-index-computations \
        --gpu-kernel-outlining \
        --ptxforge-order-kernel-args \
+       --ptxforge-workgroup-sync \
        --convert-math-to-llvm \
        --gpu-lower-to-nvvm-pipeline="cubin-chip=$SM cubin-format=isa opt-level=3 kernel-bare-ptr-calling-convention=true" \
        "$OUT/04_padded.mlir" > "$OUT/05_binary.mlir"

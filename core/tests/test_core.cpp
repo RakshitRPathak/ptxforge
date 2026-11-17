@@ -91,6 +91,24 @@ TEST(cost_model_properties) {
   CHECK_EQ(analyze(Config{64, 64, 8, 4, 4, 4}, P, T4()).bank.store_As, 1);
 }
 
+// What the RTX 5050 run measured and the old model could not see (docs/DEVLOG.md, 2026-11-17):
+// at 128x64, an 8x4 micro-tile beat 4x8 at every BK, and BK 32 beat BK 16 beat BK 8.
+TEST(cost_model_tile_shape_and_k_depth) {
+  const GPU rtx = get_gpu("rtx5050");
+  auto pred = [&](Config c) { return analyze(c, P, rtx).predicted_gflops; };
+  for (int bk : {8, 16, 32}) CHECK(pred(Config{128, 64, bk, 8, 4, 2}) > pred(Config{128, 64, bk, 4, 8, 2}));
+  CHECK(pred(Config{128, 64, 32, 8, 4, 2}) > pred(Config{128, 64, 16, 8, 4, 2}));
+  CHECK(pred(Config{128, 64, 16, 8, 4, 2}) > pred(Config{128, 64, 8, 8, 4, 2}));
+  // Consecutive, aligned floats are read as float4: a 4x4 micro-tile 32 lanes wide is conflict-free in
+  // B (4 phases), not 4-way as scalar loads would be.
+  SmemPipe s = smem_pipe(Config{64, 128, 8, 4, 4, 4}, 128);
+  CHECK_EQ(s.vec_B, 4);
+  CHECK_EQ(s.cyc_B, 4);
+  CHECK_EQ(smem_pipe(Config{64, 64, 8, 4, 4, 1}, 128).vec_A, 1);  // row of 65 floats: no float4
+  CHECK_EQ(fp32_lanes_per_sm("sm_75"), 64);
+  CHECK_EQ(fp32_lanes_per_sm("sm_120"), 128);
+}
+
 // ---- knowledge graph / advisors ---------------------------------------------------------
 static KnowledgeGraph load_kg() { return KnowledgeGraph::load(kRoot + "/knowledge/pass_graph.json"); }
 

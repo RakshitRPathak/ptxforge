@@ -5,6 +5,7 @@
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
 
@@ -15,6 +16,8 @@ std::unique_ptr<mlir::Pass> createPadWorkgroupMemoryPass();
 std::unique_ptr<mlir::Pass> createApproximateMathPass();
 std::unique_ptr<mlir::Pass> createEraseSelfCopiesPass();
 std::unique_ptr<mlir::Pass> createOrderKernelArgsPass();
+std::unique_ptr<mlir::Pass> createNormalizeWorkgroupAllocsPass();
+std::unique_ptr<mlir::Pass> createWorkgroupSyncPass();
 
 #define GEN_PASS_REGISTRATION
 #include "PtxForge/Passes.h.inc"
